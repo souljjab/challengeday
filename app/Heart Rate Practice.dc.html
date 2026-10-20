@@ -44,9 +44,9 @@
       </sc-for>
     </nav>
     <div style="display:flex;align-items:center;gap:8px">
-      <span style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:999px;background:#FFFFFF;border:1px solid #E6E8EC;font-size:12.5px;font-weight:600;color:#3A4350">
-        <span style="width:6px;height:6px;border-radius:50%;background:#8A93A0"></span>시뮬레이션 데이터
-      </span>
+      <button onClick="{{ onSensor }}" title="센서 설정" style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:999px;background:#FFFFFF;border:1px solid #E6E8EC;font-size:12.5px;font-weight:600;color:#3A4350;cursor:pointer" style-hover="border-color:#B4BAC4;color:#0F1419">
+        <span style="width:6px;height:6px;border-radius:50%;background:{{ badge.dot }}"></span>{{ badge.text }}
+      </button>
       <a href="Heart%20Rate%20Monitor.dc.html" style="display:inline-flex;align-items:center;height:34px;padding:0 14px;border:1px solid #D5D9DF;border-radius:10px;background:#FFFFFF;color:#0F1419;font-size:13.5px;font-weight:600;text-decoration:none" style-hover="background:#F5F6F8;color:#0F1419">처음으로</a>
     </div>
   </header>
@@ -94,6 +94,7 @@
             </sc-for>
           </div>
         </div>
+        <div style="font-size:12.5px;color:#5B6573;line-height:1.45;margin-top:-4px;text-wrap:pretty">{{ sensor.hint }}</div>
       </div>
 
       <sc-if value="{{ rapid.has }}" hint-placeholder-val="{{ false }}">
@@ -980,10 +981,14 @@ class Component extends DCLogic {
   beatTimes = [];
   liveVals = [];
   t0 = performance.now();
+  hs = window.HeartSensor && window.HeartSensor.client ? window.HeartSensor.client() : null;  // 실제 센서 (heart-sensor.js)
+  liveAt = 0;
+  marks = [];
   state = { ...freshFlow(), qText: DEFAULT_Q.slice(), now: performance.now(), live: { bpm: 72, rr: 833, trend: 0 }, lastBadAt: -1e9 };
 
   componentDidMount() {
     if (window.location.hash === '#start') this.goStep('check');
+    if (this.hs) { this.offHs = this.hs.subscribe(this.onHs); this.onHs({ type: 'status', status: this.hs.status }); }
     this.nextBeat();
     this.rafId = requestAnimationFrame(this.draw);
     this.tick = setInterval(this.onTick, 200);
@@ -1002,6 +1007,7 @@ class Component extends DCLogic {
     this.unmounted = true; clearTimeout(this.heartTimer);
     clearTimeout(this.beatTimer); clearInterval(this.tick); cancelAnimationFrame(this.rafId);
     window.removeEventListener('keydown', this.onKeyDown);
+    if (this.offHs) this.offHs();
     if (this.h3d) this.h3d.dispose();
   }
 
@@ -1014,9 +1020,34 @@ class Component extends DCLogic {
   }
 
   gD() { return this.props.gameSeconds ?? 8; }
+
+  // 'sensor' = 아두이노 센서, 'sim' = 시뮬레이션, 'pending' = 확인 중
+  src() { return this.hs ? this.hs.status.source : 'sim'; }
+  needConnect() { const hs = this.state.hs; return this.src() === 'sensor' && !!hs && hs.conn !== 'ok'; }
+  onSensor = () => { if (this.hs) this.hs.openPanel(); };
+
+  onHs = ev => {
+    if (ev.type === 'status') {
+      const src = ev.status.source, prev = this.lastSrc, upd = { hs: ev.status };
+      this.lastSrc = src;
+      // 센서와 시뮬레이션 데이터가 섞이지 않게, 데이터 출처가 바뀌면 처음 화면으로 돌아가요
+      if (prev && prev !== 'pending' && src !== prev) {
+        this.liveVals = [];
+        this.beatTimes = [];
+        this.marks = [];
+        Object.assign(upd, freshFlow(), { now: performance.now(), live: { bpm: 72, rr: 833, trend: 0 }, lastBadAt: -1e9 });
+      }
+      this.setState(upd);
+    } else if (ev.type === 'beat' && this.src() === 'sensor') {
+      this.liveAt = performance.now();
+      if (ev.beat.rr) this.onBeat(ev.beat.rr, ev.beat.t);
+      else this.pump(800);
+    }
+  };
   isRun(s) { return (s.screen === 'normal' && s.nsub === 'run') || (s.screen === 'focus' && s.fsub === 'run'); }
 
   nextBeat = () => {
+    if (this.src() !== 'sim') { this.beatTimer = setTimeout(this.nextBeat, 300); return; }
     const st = this.state, now = performance.now();
     let tgt, h = HRV.normal;
     if (st.screen === 'normal' && st.nsub === 'run') tgt = PROF.normal((now - st.phaseStart) / 1000 / st.dur.normal * 30);
@@ -1026,13 +1057,14 @@ class Component extends DCLogic {
     let rr = 60000 / tgt + h.amp * Math.sin(2 * Math.PI * now / 4200) + h.noise * (Math.random() * 2 - 1);
     if (st.screen === 'check' && !st.check.doneAt && now - st.check.start < 2600) rr *= 1 + (Math.random() - 0.5) * 0.55;
     if (this.isRun(st) && this.pendingArt && (now - st.phaseStart) / 1000 >= this.pendingArt.t) { rr = this.pendingArt.kind === 'spike' ? 316 : rr * 2; this.pendingArt = null; }
-    this.beatTimer = setTimeout(() => { this.onBeat(rr); this.nextBeat(); }, rr);
+    this.beatTimer = setTimeout(() => { if (this.src() === 'sim') this.onBeat(rr); this.nextBeat(); }, rr);
   };
 
-  onBeat = (rr) => {
+  onBeat = (rr, tAbs) => {
     const now = performance.now(), bpm = 60000 / rr, thr = this.props.anomalyThreshold ?? 45;
     const recent = this.liveVals.slice(-5);
     const bad = bpm > 180 || bpm < 40 || (recent.length >= 3 && Math.abs(bpm - median(recent)) > thr);
+    if (tAbs != null) this.marks = [...this.marks.filter(m => tAbs - m.t < 8000), { t: tAbs, bpm, bad }];
     this.beatTimes.push({ t: now / 1000, bpm, bad });
     this.beatTimes = this.beatTimes.filter(b => now / 1000 - b.t < 8);
     if (!bad) { this.liveVals.push(bpm); if (this.liveVals.length > 12) this.liveVals.shift(); this.pump(rr); }
@@ -1060,7 +1092,9 @@ class Component extends DCLogic {
       if (s.screen === 'normal' && s.nsub === 'run' && (now - s.phaseStart) / 1000 >= s.dur.normal) upd.nsub = 'review';
       if (s.screen === 'focus' && s.fsub === 'run' && (now - s.phaseStart) / 1000 >= s.dur.focus) upd.fsub = 'review';
       if (s.screen === 'check') {
-        if (!s.check.doneAt && s.check.stable >= 8 && (now - s.check.start) / 1000 >= cs) upd.check = { ...s.check, doneAt: now };
+        // 센서에서 3초 넘게 박동이 안 오면(손가락을 뗌) 안정 박동 수를 다시 세요
+        if (!s.check.doneAt && s.check.stable && this.src() === 'sensor' && now - this.liveAt > 3000) upd.check = { ...s.check, stable: 0 };
+        else if (!s.check.doneAt && s.check.stable >= 8 && (now - s.check.start) / 1000 >= cs) upd.check = { ...s.check, doneAt: now };
         else if (s.check.doneAt && now - s.check.doneAt >= 3000) upd.screen = 'normal';
       }
       return upd;
@@ -1090,6 +1124,20 @@ class Component extends DCLogic {
         ctx.beginPath(); ctx.moveTo(Math.round(X(s)) + 0.5, 0); ctx.lineTo(Math.round(X(s)) + 0.5, h); ctx.stroke();
       }
       for (let k = 0; k <= 4; k++) { const y = Math.round(k / 4 * (h - 1)) + 0.5; ctx.strokeStyle = 'rgba(229,72,77,0.06)'; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+      if (this.src() === 'sensor') {
+        // 센서가 보내온 실제 광혈류(PPG) 파형과 박동별 BPM
+        const g = ctx.createLinearGradient(0, 0, w, 0);
+        g.addColorStop(0, 'oklch(0.62 0.19 25 / 0)');
+        g.addColorStop(0.12, RED);
+        g.addColorStop(1, RED);
+        this.hs.drawWave(ctx, {
+          w, h, win, top, bot, stroke: g, lineWidth: 2.25, dot: true, dotColor: RED, dotSize: 3.5,
+          font: '700 11px "Pretendard Variable", Pretendard, system-ui, sans-serif',
+          marks: this.marks.map(m => ({ t: m.t, text: m.bad ? '오류?' : String(Math.round(m.bpm)), color: m.bad ? 'oklch(0.58 0.13 65)' : '#3A4350' }))
+        });
+        this.rafId = requestAnimationFrame(this.draw);
+        return;
+      }
       const pulse = d => (d > 0 && d < 1.2) ? Math.exp(-(((d - 0.12) / 0.055) ** 2)) + 0.36 * Math.exp(-(((d - 0.34) / 0.08) ** 2)) : 0;
       ctx.beginPath();
       let ly = bot;
@@ -1135,6 +1183,7 @@ class Component extends DCLogic {
   });
 
   startRun(p) {
+    if (this.needConnect()) { this.onSensor(); return; }
     const now = performance.now(), D = this.props.phaseSeconds ?? 35;
     this.pendingArt = Math.random() < 0.6 ? { t: D * (0.35 + Math.random() * 0.4), kind: p === 'normal' || Math.random() < 0.5 ? 'spike' : 'miss' } : null;
     this.setState(s => ({ [p === 'normal' ? 'nsub' : 'fsub']: 'run', phaseStart: now, now, dur: { ...s.dur, [p]: D }, data: { ...s.data, [p]: [] }, math: p === 'focus' ? freshMath() : s.math }));
@@ -1156,6 +1205,7 @@ class Component extends DCLogic {
   });
 
   startGame = () => {
+    if (this.needConnect()) { this.onSensor(); return; }
     const n = this.props.rounds ?? 5, now = performance.now();
     const qs = this.state.qText.slice(0, n).map((t, i) => (t || '').trim() || DEFAULT_Q[i] || `질문 ${i + 1}`);
     const order = qs.map((_, i) => i).sort(() => Math.random() - 0.5), hot = order.slice(0, Math.random() < 0.5 ? 1 : 2);
@@ -1174,6 +1224,9 @@ class Component extends DCLogic {
   renderVals() {
     const st = this.state, P = this.props, now = st.now;
     const thr = P.anomalyThreshold ?? 45;
+    // 센서에서 4초 넘게 박동이 안 오면 현재 심박수를 비워요
+    const liveStale = this.src() !== 'sim' && performance.now() - this.liveAt > 4000;
+    const live = liveStale ? { bpm: '—', rr: '—', trend: 0 } : st.live;
     const mode = (P.colorMode ?? '변화 방향') === '변화 방향' ? 'trend' : 'avg';
     const cs = P.checkSeconds ?? 10, ps = P.phaseSeconds ?? 35, gD = P.gameSeconds ?? 8, rounds = P.rounds ?? 5;
     const scrn = st.screen;
@@ -1191,8 +1244,11 @@ class Component extends DCLogic {
     }));
 
     const ck = st.check, cel = (now - ck.start) / 1000, stable = Math.min(8, ck.stable);
+    const sensorMode = this.src() === 'sensor', hs = st.hs;
     const chk = {
-      title: ck.doneAt ? '신호가 안정됐어요' : cel < 2.6 ? '신호를 찾는 중…' : '심장 박동을 감지하고 있어요',
+      title: ck.doneAt ? '신호가 안정됐어요'
+        : sensorMode && hs ? (hs.conn !== 'ok' ? '센서를 연결해 주세요' : !hs.finger ? '손가락을 센서에 올려 주세요' : stable ? '심장 박동을 감지하고 있어요' : '신호를 찾는 중…')
+        : cel < 2.6 ? '신호를 찾는 중…' : '심장 박동을 감지하고 있어요',
       sub: `안정된 박동 ${stable} / 8`,
       dots: Array.from({ length: 8 }, (_, i) => ({ c: i < stable ? (ck.doneAt ? GREEN : RED) : '#E3E6EA' })),
       btn: ck.doneAt ? `다음 단계 (${Math.max(1, Math.ceil(3 - (now - ck.doneAt) / 1000))})` : '다음 단계',
@@ -1254,7 +1310,7 @@ class Component extends DCLogic {
       res.forEach(r => { r.p = r.has ? Math.round(Math.min(97, Math.max(3, 100 / (1 + Math.exp(-((r.rise - md) / 2.2 - 0.6)))))) : 0; r.lie = r.p >= 60; });
       const maxRise = Math.max(12, ...res.map(r => r.rise));
       const i = g.i, qel = Math.max(0, Math.min(gD, (now - g.qStart) / 1000)), wDone = qel >= gD, ans = g.answers[i];
-      const dl = st.live.bpm - Math.round(base);
+      const dl = typeof live.bpm === 'number' ? live.bpm - Math.round(base) : 0;
       const sel = on => ({ bg: on ? '#0F1419' : '#FFFFFF', color: on ? '#FFFFFF' : '#0F1419', border: on ? '#0F1419' : '#D5D9DF' });
       const y = sel(ans === '예'), n = sel(ans === '아니오');
       gq = {
@@ -1263,7 +1319,7 @@ class Component extends DCLogic {
         canNext: wDone && ans != null, cantNext: !(wDone && ans != null),
         waitText: !wDone ? `심박 측정 중… ${Math.ceil(gD - qel)}초` : '대답 버튼을 눌러 주세요',
         nextLabel: i < g.questions.length - 1 ? '다음 질문' : '탐지 결과 보기',
-        base: Math.round(base), nowBpm: st.live.bpm, delta: signed(dl),
+        base: Math.round(base), nowBpm: live.bpm, delta: typeof live.bpm === 'number' ? signed(dl) : '—',
         dBg: dl > 2 ? RED_T : dl < -2 ? BLUE_T : '#EEF0F3', dColor: dl > 2 ? 'oklch(0.48 0.18 25)' : dl < -2 ? 'oklch(0.48 0.18 255)' : '#3A4350'
       };
       if (gsub === 'q') gC = bpmChart(res[i].A, gD, mode, true, base, `기준 ${Math.round(base)}`);
@@ -1301,15 +1357,26 @@ class Component extends DCLogic {
     const ev = evs[evs.length - 1];
     const rapid = ev && (runN || runF || scrn === 'summary') ? { has: true, text: `${ev.name} 상태 ${fmt(ev.t1)} · 5초 동안 ${ev.d > 0 ? '+' : '−'}${Math.abs(Math.round(ev.d))} BPM` } : { has: false, text: '' };
 
-    const unstable = now - st.lastBadAt < 3000 || (scrn === 'check' && !ck.doneAt && cel < 2.6);
-    const on = unstable ? 'oklch(0.75 0.15 70)' : GREEN;
-    const sensor = { label: unstable ? '불안정' : '양호', color: on, bars: ['6px', '10px', '14px', '18px'].map((h, i) => ({ h, c: i < (unstable ? 2 : 4) ? on : '#E3E6EA' })) };
-    const tr = st.live.trend;
-    const trend = tr > 1 ? { text: '▲ 빨라지는 중', color: 'oklch(0.5 0.18 25)', bg: RED_T } : tr < -1 ? { text: '▼ 느려지는 중', color: 'oklch(0.5 0.18 255)', bg: BLUE_T } : { text: '● 안정', color: '#3A4350', bg: '#F1F2F4' };
+    const AMBER = 'oklch(0.75 0.15 70)', BARS = ['6px', '10px', '14px', '18px'];
+    let sensor;
+    if (sensorMode && hs) {
+      // 센서 신호 품질 + 화면에서 튀는 값을 발견했는지 함께 반영
+      const shaky = now - st.lastBadAt < 3000 && hs.level >= 3, level = shaky ? 2 : hs.level, color = shaky ? AMBER : hs.color;
+      sensor = { label: shaky ? '불안정' : hs.label, color, hint: shaky ? '튀는 값이 있었어요 · 손가락을 움직이지 말아 주세요' : hs.hint, bars: BARS.map((h, i) => ({ h, c: i < level ? color : '#E3E6EA' })) };
+    } else if (this.src() === 'pending') {
+      sensor = { label: '확인 중', color: '#8A93A0', hint: '센서 연결을 확인하고 있어요…', bars: BARS.map(h => ({ h, c: '#E3E6EA' })) };
+    } else {
+      const unstable = now - st.lastBadAt < 3000 || (scrn === 'check' && !ck.doneAt && cel < 2.6);
+      const on = unstable ? AMBER : GREEN;
+      sensor = { label: unstable ? '불안정' : '양호', color: on, hint: '시뮬레이션 데이터예요 · 위의 배지를 눌러 센서를 연결할 수 있어요', bars: BARS.map((h, i) => ({ h, c: i < (unstable ? 2 : 4) ? on : '#E3E6EA' })) };
+    }
+    const tr = live.trend;
+    const trend = liveStale ? { text: '● 측정 대기', color: '#5B6573', bg: '#F1F2F4' } : tr > 1 ? { text: '▲ 빨라지는 중', color: 'oklch(0.5 0.18 25)', bg: RED_T } : tr < -1 ? { text: '▼ 느려지는 중', color: 'oklch(0.5 0.18 255)', bg: BLUE_T } : { text: '● 안정', color: '#3A4350', bg: '#F1F2F4' };
 
     return {
       heartRef: this.heartRef, heart3dRef: this.heart3dRef, canvasRef: this.canvasRef,
-      live: st.live, trend, sensor, rapid, stepper,
+      live, trend, sensor, rapid, stepper,
+      badge: st.hs ? st.hs.badge : { text: '시뮬레이션 데이터', dot: '#8A93A0' }, onSensor: this.onSensor,
       scr: { home: scrn === 'home', check: scrn === 'check', normal: scrn === 'normal', focus: scrn === 'focus', game: scrn === 'game', summary: scrn === 'summary' },
       times: { check: `약 ${cs}초`, phase: `${ps}초`, game: `질문 ${rounds}개 × ${gD}초` },
       startLabel: `측정 시작 · ${ps}초`,
@@ -1319,7 +1386,7 @@ class Component extends DCLogic {
       legend: mode === 'trend' ? { hi: '빨라지는 구간', lo: '느려지는 구간' } : { hi: '평균보다 빠름', lo: '평균보다 느림' },
       rr: rrChart(N, F, st.dur.normal, st.dur.focus),
       onRestart: () => this.setState({ ...freshFlow(), now: performance.now() }),
-      onStart: () => this.goStep('check'),
+      onStart: () => (this.needConnect() ? this.onSensor() : this.goStep('check')),
       onCheckNext: () => this.goStep('normal'),
       onStartNormal: () => this.startRun('normal'), onStopNormal: () => this.stopRun('normal'),
       onGoFocus: () => this.goStep('focus'),

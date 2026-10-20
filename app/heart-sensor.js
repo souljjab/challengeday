@@ -360,6 +360,7 @@
     set(k, v) { try { localStorage.setItem('heartSensor.' + k, JSON.stringify(v)); } catch { /* 저장 불가 환경 */ } }
   };
   const COLOR = { green: 'oklch(0.66 0.15 155)', amber: 'oklch(0.75 0.15 70)', red: 'oklch(0.62 0.19 25)', gray: '#8A93A0' };
+  const SHELL_NAME = 'heart-sensor-shell';
   const USB_NAMES = { 0x2341: 'Arduino', 0x2A03: 'Arduino', 0x1A86: 'CH340', 0x0403: 'FTDI', 0x10C4: 'CP210x', 0x239A: 'Adafruit', 0x303A: 'ESP32' };
 
   // ───────── 최근 파형 보관 + 그리기 ─────────
@@ -393,25 +394,29 @@
     // o: w, h, win(초), top, bot, delay(ms), stroke(색 또는 그라디언트), lineWidth, dot, marks[{t, text, color}], font
     draw(ctx, o) {
       const delay = o.delay ?? 250, end = nowAbs() - delay, start = end - o.win * 1000;
-      const pts = [];
-      let lo = Infinity, hi = -Infinity;
+      const pts = [], vals = [];
       for (let k = this.len; k > 0; k--) {
         const i = (this.head - k + this.cap) % this.cap, t = this.t[i];
         if (t < start - 50 || t > end) continue;
         const v = this.v[i];
         pts.push(t, v);
-        if (v === v) { if (v < lo) lo = v; if (v > hi) hi = v; }
+        if (v === v) vals.push(v);
       }
-      // 화면 높이에 맞춰 크기를 부드럽게 조절 (작은 신호도 잘 보이게, 잡음은 너무 키우지 않게)
-      if (hi > lo) {
-        const mid = (hi + lo) / 2, span = Math.max(hi - lo, 0.6);
+      // 화면 높이에 맞춰 크기를 부드럽게 조절. 순간적으로 튀는 값(움직임)은 무시하도록 상·하위 3%는 빼고 봐요.
+      if (vals.length > 20) {
+        vals.sort((a, b) => a - b);
+        let lo = vals[Math.floor(vals.length * 0.03)], hi = vals[Math.ceil(vals.length * 0.97) - 1];
+        const mid = (hi + lo) / 2, span = Math.max(hi - lo, 0.6) * 1.1;
         lo = mid - span / 2; hi = mid + span / 2;
         if (this.lo == null) { this.lo = lo; this.hi = hi; }
         this.lo += (lo - this.lo) * 0.08;
         this.hi += (hi - this.hi) * 0.08;
+      } else if (!vals.length) {
+        this.lo = this.hi = null;
       }
       const top = o.top, bot = o.bot, X = t => (t - start) / (end - start) * o.w;
-      const Y = v => (v !== v || this.lo == null) ? (top + bot) / 2 : bot - (v - this.lo) / (this.hi - this.lo || 1) * (bot - top) * 0.92 - (bot - top) * 0.04;
+      const Y = v => (v !== v || this.lo == null) ? (top + bot) / 2
+        : clamp(bot - (v - this.lo) / (this.hi - this.lo || 1) * (bot - top), top - 4, bot + 4);
       ctx.beginPath();
       let ly = (top + bot) / 2, any = false;
       for (let k = 0; k < pts.length; k += 2) {
@@ -605,7 +610,12 @@
       this.flush(t, false);
     }
     onLine(line, t) {
-      const c = line.charCodeAt(0);
+      let c = line.charCodeAt(0);
+      if (c !== 35 && !(c >= 48 && c <= 57)) {
+        // 아두이노가 재시작할 때 줄 앞에 깨진 글자가 붙을 수 있어요
+        const h = line.indexOf('#');
+        if (h > 0) { line = line.slice(h); c = 35; }
+      }
       if (c >= 48 && c <= 57) {
         const k = line.indexOf(',');
         const ir = k > 0 ? +line.slice(0, k) : NaN, red = k > 0 ? +line.slice(k + 1) : NaN;
@@ -614,7 +624,7 @@
         this.lastData = t;
         if (this.conn !== 'ok') { this.conn = 'ok'; this.statusDirty = true; }
         const b = this.proc.push(ir, red);
-        this.wavePending.push(this.proc.display);
+        this.wavePending.push(this.fw.finger || this.proc.pulseOk ? this.proc.display : NaN);  // 손가락이 없으면 평평하게
         if (b) this.beatPending.push(b);
         return;
       }
@@ -736,8 +746,8 @@
           : moving ? '움직이면 오차가 생겨요 · 가만히 있어 주세요' : '박동 간격이 고르지 않아요 · 힘을 빼고 편하게 호흡하세요';
       }
       const connected = !!this.port;
-      const badge = s.source === 'sim' ? { text: '시뮬레이션 데이터', dot: COLOR.gray }
-        : !this.supported ? { text: '센서 연결 불가', dot: COLOR.amber }
+      const badge = !this.supported ? { text: '센서 연결 불가', dot: COLOR.amber }
+        : s.source === 'sim' ? { text: '시뮬레이션 데이터', dot: COLOR.gray }
         : conn === 'ok' ? { text: '센서 연결됨', dot: COLOR.green }
         : conn === 'connecting' || conn === 'waiting' ? { text: '센서 연결 중…', dot: COLOR.amber }
         : conn === 'nodata' || conn === 'nosensor' ? { text: '센서 확인 필요', dot: COLOR.amber }
@@ -1005,6 +1015,7 @@
   // ───────── START.html(바깥 창) 쪽: 안쪽 페이지에 연결을 빌려줘요 ─────────
   function host(iframe) {
     const hub = getHub();
+    iframe.name = SHELL_NAME;  // 안쪽 페이지가 START.html 안에 있다는 걸 바로 알 수 있게
     const post = msg => { try { iframe.contentWindow.postMessage(Object.assign({ hs: 1 }, msg), '*'); } catch { /* 페이지 이동 중 */ } };
     hub.subscribe(post);
     window.addEventListener('message', e => {
@@ -1034,7 +1045,8 @@
         });
         const page = location.pathname.split('/').pop() + location.hash;
         try { window.parent.postMessage({ hs: 1, type: 'hello', page }, '*'); } catch { /* 무시 */ }
-        this.fallback = setTimeout(() => { if (this.mode === 'pending') this.useLocal(); }, 500);
+        // START.html 안이면 바깥 창의 연결을 기다리고, 다른 곳(디자인 도구 미리보기 등)에 들어 있으면 직접 연결해요
+        if (window.name !== SHELL_NAME) this.fallback = setTimeout(() => { if (this.mode === 'pending') this.useLocal(); }, 1500);
       } else {
         this.useLocal();
       }
