@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>심박 측정 · 화생컴공</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%23E5484D' d='M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="app/vendor/pretendard/pretendardvariable.css">
+<style>
+  html, body { margin: 0; height: 100%; background: #F3F4F6; overflow: hidden; }
+  iframe { display: block; width: 100%; height: 100%; border: 0; }
+</style>
+<script src="app/heart-sensor.js"></script>
+</head>
+<body>
+<!--
+  이 파일을 Chrome 또는 Edge로 열면 돼요.
+  센서 연결은 이 창이 계속 들고 있어서, 안쪽 화면(측정 ↔ 실습)을 오가도 연결이 끊기지 않아요.
+-->
+<iframe id="page" title="심박 측정"></iframe>
+<script>
+  const frame = document.getElementById('page');
+  HeartSensor.host(frame);
+  let page = 'Heart%20Rate%20Monitor.dc.html';
+  try {
+    const last = sessionStorage.getItem('heartSensor.page');
+    if (last && /^Heart%20Rate%20(Monitor|Practice)\.dc\.html(#\w*)?$/.test(last)) page = last;
+  } catch { /* 저장 불가 환경 */ }
+  frame.src = 'app/' + page;
+</script>
+</body>
+</html>

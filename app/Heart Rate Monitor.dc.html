@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./vendor/react.production.min.js"></script>
+<script src="./vendor/react-dom.production.min.js"></script>
+<script src="./dc-bundle.js"></script>
+<script src="./heart-sensor.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="vendor/pretendard/pretendardvariable.css">
+  <script src="vendor/three.min.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;background:#F3F4F6}
+    body{font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#0F1419;-webkit-font-smoothing:antialiased;letter-spacing:-0.005em}
+    a{color:#0F1419}
+    a:hover{color:oklch(0.62 0.19 25)}
+    button{font-family:inherit}
+  </style>
+</helmet>
+<div style="max-width:1480px;margin:0 auto;padding:22px 28px 36px;display:flex;flex-direction:column;gap:16px">
+
+  <header style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:38px;height:38px;border-radius:11px;background:#0F1419;display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#FFFFFF" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+      </div>
+      <div>
+        <div style="font-size:18px;font-weight:700;letter-spacing:-0.02em">심박 측정</div>
+        <div style="font-size:13px;color:#5B6573;margin-top:1px">심장 박동 기반 생체 신호 분석 · 화생컴공</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border-radius:999px;background:#FFFFFF;border:1px solid #E6E8EC;font-size:12.5px;font-weight:600;color:#3A4350">
+        <span style="width:6px;height:6px;border-radius:50%;background:#8A93A0"></span>시뮬레이션 데이터
+      </span>
+      <span style="font-size:12.5px;color:#8A93A0;font-weight:500">2026 챌린지데이</span>
+      <a href="Heart%20Rate%20Practice.dc.html#start" style="display:inline-flex;align-items:center;height:40px;padding:0 20px;margin-left:6px;border-radius:10px;background:#0F1419;color:#FFFFFF;font-size:15px;font-weight:700;text-decoration:none" style-hover="background:#2A313C;color:#FFFFFF">실습하기 →</a>
+    </div>
+  </header>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,330px),1fr));gap:16px">
+
+    <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:24px 26px;display:flex;align-items:center;gap:26px;min-width:0">
+      <div style="position:relative;width:200px;height:224px;flex:none;margin:-16px 0 -16px -10px">
+        <div style="position:absolute;left:50%;top:50%;width:172px;height:172px;margin:-86px 0 0 -86px;border-radius:50%;background:oklch(0.975 0.015 25)"></div>
+        <div ref="{{ heartRef }}" style="position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px 0 0 -32px">
+          <svg width="64" height="64" viewBox="0 0 24 24" style="display:block"><path fill="oklch(0.62 0.19 25)" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+        </div>
+        <div ref="{{ heart3dRef }}" style="position:absolute;inset:0"></div>
+      </div>
+      <div style="min-width:0">
+        <div style="font-size:13px;color:#5B6573;font-weight:600">현재 심박수</div>
+        <div style="display:flex;align-items:baseline;gap:8px;margin-top:6px">
+          <span style="font-size:76px;font-weight:700;letter-spacing:-0.045em;line-height:0.95;font-variant-numeric:tabular-nums">{{ live.bpm }}</span>
+          <span style="font-size:18px;font-weight:600;color:#5B6573">BPM</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap">
+          <span style="display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 10px;border-radius:999px;font-size:12.5px;font-weight:700;background:{{ trend.bg }};color:{{ trend.color }}">{{ trend.text }}</span>
+          <span style="font-size:12.5px;color:#5B6573;font-variant-numeric:tabular-nums">박동 간격 {{ live.rr }} ms</span>
+        </div>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;font-size:12px;color:#5B6573">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.62 0.21 25)"></span>산소가 많은 혈액</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.55 0.2 270)"></span>산소가 적은 혈액</span>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:22px 24px;display:flex;flex-direction:column;gap:18px;min-width:0">
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+        <sc-for list="{{ steps }}" as="s" hint-placeholder-count="3">
+          <div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+            <div style="height:4px;border-radius:2px;background:#E6E8EC;overflow:hidden">
+              <div style="height:100%;width:{{ s.fill }};background:#0F1419;border-radius:2px;transition:width .2s linear"></div>
+            </div>
+            <div style="font-size:12.5px;font-weight:600;color:{{ s.color }};white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ s.label }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:12px">
+        <div style="min-width:0">
+          <div style="font-size:21px;font-weight:700;letter-spacing:-0.02em">{{ ctl.title }}</div>
+          <div style="font-size:14px;color:#5B6573;margin-top:5px;line-height:1.45;text-wrap:pretty">{{ ctl.desc }}</div>
+        </div>
+        <sc-if value="{{ measuring }}" hint-placeholder-val="{{ false }}">
+          <div style="text-align:right;flex:none">
+            <div style="font-size:30px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;line-height:1">{{ remain }}</div>
+            <div style="font-size:12px;color:#8A93A0;margin-top:4px">남은 시간</div>
+          </div>
+        </sc-if>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:auto">
+        <sc-if value="{{ notMeasuring }}" hint-placeholder-val="{{ true }}">
+          <button onClick="{{ onPrimary }}" style="height:44px;padding:0 22px;border:none;border-radius:10px;background:#0F1419;color:#FFFFFF;font-size:15px;font-weight:600;cursor:pointer" style-hover="background:#2A313C">{{ ctl.primary }}</button>
+        </sc-if>
+        <sc-if value="{{ measuring }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ onStop }}" style="height:44px;padding:0 22px;border:1px solid #D5D9DF;border-radius:10px;background:#FFFFFF;color:#0F1419;font-size:15px;font-weight:600;cursor:pointer" style-hover="background:#F5F6F8">측정 중지</button>
+        </sc-if>
+        <sc-if value="{{ showReset }}" hint-placeholder-val="{{ false }}">
+          <button onClick="{{ onReset }}" style="height:44px;padding:0 16px;border:none;border-radius:10px;background:transparent;color:#5B6573;font-size:14px;font-weight:600;cursor:pointer" style-hover="background:#F3F4F6;color:#0F1419">초기화</button>
+        </sc-if>
+      </div>
+    </div>
+
+    <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:20px 22px;display:flex;flex-direction:column;gap:12px;min-width:0">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <div style="font-size:13px;color:#5B6573;font-weight:600">센서 감지</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+            <span style="width:9px;height:9px;border-radius:50%;background:{{ sensor.color }}"></span>
+            <span style="font-size:22px;font-weight:700;letter-spacing:-0.02em">{{ sensor.label }}</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:3px;height:20px;margin-top:4px">
+          <sc-for list="{{ sensor.bars }}" as="b" hint-placeholder-count="4">
+            <div style="width:5px;height:{{ b.h }};border-radius:1.5px;background:{{ b.c }}"></div>
+          </sc-for>
+        </div>
+      </div>
+      <canvas ref="{{ canvasRef }}" style="width:100%;height:56px;display:block"></canvas>
+      <sc-if value="{{ rapid.has }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:oklch(0.965 0.02 25)">
+          <span style="width:22px;height:22px;flex:none;border-radius:6px;background:oklch(0.62 0.19 25);color:#FFFFFF;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center">!</span>
+          <div style="min-width:0">
+            <div style="font-size:14px;font-weight:700;color:oklch(0.45 0.16 25)">급격한 변화 감지</div>
+            <div style="font-size:12.5px;color:#3A4350;font-variant-numeric:tabular-nums;margin-top:1px">{{ rapid.text }}</div>
+          </div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ rapid.none }}" hint-placeholder-val="{{ true }}">
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#F5F6F8">
+          <span style="width:22px;height:22px;flex:none;border-radius:6px;background:#E3E6EA"></span>
+          <div style="min-width:0">
+            <div style="font-size:14px;font-weight:600;color:#3A4350">급격한 변화 없음</div>
+            <div style="font-size:12.5px;color:#8A93A0;margin-top:1px">5초 안에 ±10 BPM 이상 변하면 표시돼요</div>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:6px">
+    <div style="font-size:15px;font-weight:700">상태별 심박수 비교</div>
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;font-size:12.5px;color:#3A4350;font-weight:500">
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;border-radius:2px;background:oklch(0.62 0.19 25)"></span>{{ legend.hi }}</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;border-radius:2px;background:oklch(0.62 0.19 255)"></span>{{ legend.lo }}</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;border-top:1.5px dashed #3A4350"></span>평균선</span>
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;border:2.5px solid oklch(0.75 0.15 70);background:#FFFFFF"></span>오류 가능성</span>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:16px">
+
+    <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:18px 22px 14px;display:flex;flex-direction:column;min-width:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:16px;font-weight:700">보통 상태</div>
+          <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:#F1F2F4;color:#3A4350;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums">
+            <sc-if value="{{ nC.status.live }}" hint-placeholder-val="{{ false }}"><span style="width:6px;height:6px;border-radius:50%;background:oklch(0.62 0.19 25)"></span></sc-if>{{ nC.status.text }}
+          </span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:6px">
+          <span style="font-size:13px;color:#5B6573;font-weight:600">평균</span>
+          <span style="font-size:30px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ nC.avgText }}</span>
+          <span style="font-size:13px;color:#5B6573;font-weight:600">BPM</span>
+        </div>
+      </div>
+      <div style="position:relative;height:210px;margin:22px 0 26px 34px">
+        <div style="position:absolute;left:-34px;top:-18px;font-size:10.5px;color:#8A93A0;font-weight:600">BPM</div>
+        <div style="position:absolute;left:0;right:0;top:12.5%;border-top:1px solid #EEF0F3"></div>
+        <div style="position:absolute;left:0;right:0;top:37.5%;border-top:1px solid #EEF0F3"></div>
+        <div style="position:absolute;left:0;right:0;top:62.5%;border-top:1px solid #EEF0F3"></div>
+        <div style="position:absolute;left:0;right:0;top:87.5%;border-top:1px solid #EEF0F3"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;border-top:1px solid #D9DDE3"></div>
+        <div style="position:absolute;left:-34px;width:26px;text-align:right;top:12.5%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">120</div>
+        <div style="position:absolute;left:-34px;width:26px;text-align:right;top:37.5%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">100</div>
+        <div style="position:absolute;left:-34px;width:26px;text-align:right;top:62.5%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">80</div>
+        <div style="position:absolute;left:-34px;width:26px;text-align:right;top:87.5%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">60</div>
+        <sc-for list="{{ nC.bands }}" as="bd" hint-placeholder-count="0">
+          <div style="position:absolute;top:0;bottom:0;left:{{ bd.left }};width:{{ bd.width }};background:{{ bd.bg }};border-radius:4px">
+            <div style="position:absolute;top:6px;left:6px;font-size:10.5px;font-weight:700;white-space:nowrap;color:{{ bd.color }}">급격한 변화</div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ nC.hasAvg }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:0;right:0;top:{{ nC.avgTop }};border-top:1.5px dashed #3A4350"></div>
+        </sc-if>
+        <svg viewBox="0 0 1000 300" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+          <path d="{{ nC.lo }}" style="fill:none;stroke:oklch(0.62 0.19 255);stroke-width:2.25px;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke"></path>
+          <path d="{{ nC.hi }}" style="fill:none;stroke:oklch(0.62 0.19 25);stroke-width:2.25px;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke"></path>
+        </svg>
+        <sc-if value="{{ nC.hasAvg }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;right:0;top:{{ nC.avgTop }};transform:translateY(calc(-100% - 4px));font-size:11.5px;font-weight:700;color:#3A4350;background:rgba(255,255,255,0.92);padding:1px 6px;border-radius:5px;font-variant-numeric:tabular-nums">{{ nC.avgLabel }}</div>
+        </sc-if>
+        <sc-if value="{{ nC.head.show }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:{{ nC.head.left }};top:{{ nC.head.top }};width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:{{ nC.head.color }};box-shadow:0 0 0 4px rgba(15,20,25,0.08)"></div>
+        </sc-if>
+        <sc-for list="{{ nC.anomalies }}" as="a" hint-placeholder-count="0">
+          <div style="position:absolute;left:{{ a.left }};top:{{ a.top }};width:0;height:0">
+            <div style="position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:#FFFFFF;border:2.5px solid oklch(0.75 0.15 70)"></div>
+            <div style="position:absolute;left:0;top:0;transform:{{ a.tx }};white-space:nowrap;display:flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 6px;border-radius:7px;background:oklch(0.975 0.035 85);border:1px solid oklch(0.88 0.08 80);font-size:11.5px;font-weight:600;color:oklch(0.43 0.1 60)">
+              <span style="width:14px;height:14px;border-radius:50%;background:oklch(0.75 0.15 70);color:#FFFFFF;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center">!</span>
+              <span style="font-variant-numeric:tabular-nums;font-weight:700">{{ a.label }}</span><span>오류 가능성</span>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ nC.empty.show }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13.5px;color:#8A93A0;font-weight:500">{{ nC.empty.text }}</div>
+        </sc-if>
+        <sc-for list="{{ nC.ticks }}" as="k" hint-placeholder-count="4">
+          <div style="position:absolute;top:calc(100% + 8px);left:{{ k.left }};transform:translateX(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums;white-space:nowrap">{{ k.label }}</div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:18px 22px 14px;display:flex;flex-direction:column;min-width:0">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="font-size:16px;font-weight:700">집중 상태</div>
+          <span style="display:inline-flex;align-items:center;gap:6px;height:24px;padding:0 9px;border-radius:999px;background:#F1F2F4;color:#3A4350;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums">
+            <sc-if value="{{ fC.status.live }}" hint-placeholder-val="{{ false }}"><span style="width:6px;height:6px;border-radius:50%;background:oklch(0.62 0.19 25)"></span></sc-if>{{ fC.status.text }}
+          </span>
+        </div>
+        <div style="display:flex;align-items:baseline;gap:6px">
+          <span style="font-size:13px;color:#5B6573;font-weight:600">평균</span>
+          <span style="font-size:30px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ fC.avgText }}</span>
+          <span style="font-size:13px;color:#5B6573;font-weight:600">BPM</span>
+        </div>
+      </div>
+      <div style="position:relative;height:210px;margin:22px 0 26px 34px">
+        <div style="position:absolute;left:-34px;top:-18px;font-size:10.5px;color:#8A93A0;font-weight:600">BPM</div>
+        <div style="position:absolute;left:0;right:0;top:12.5%;border-top:1px solid #EEF0F3"></div>
+        <div style="position:absolute;left:0;right:0;top:37.5%;border-top:1px solid #EEF0F3"></div>
+        <div style="position:absolute;left:0;right:0;top:62.5%;border-top:1px solid #EEF0F3"></div>
+        <div style="position:absolute;left:0;right:0;top:87.5%;border-top:1px solid #EEF0F3"></div>
+        <div style="position:absolute;left:0;right:0;bottom:0;border-top:1px solid #D9DDE3"></div>
+        <div style="position:absolute;left:-34px;width:26px;text-align:right;top:12.5%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">120</div>
+        <div style="position:absolute;left:-34px;width:26px;text-align:right;top:37.5%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">100</div>
+        <div style="position:absolute;left:-34px;width:26px;text-align:right;top:62.5%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">80</div>
+        <div style="position:absolute;left:-34px;width:26px;text-align:right;top:87.5%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">60</div>
+        <sc-for list="{{ fC.bands }}" as="bd" hint-placeholder-count="0">
+          <div style="position:absolute;top:0;bottom:0;left:{{ bd.left }};width:{{ bd.width }};background:{{ bd.bg }};border-radius:4px">
+            <div style="position:absolute;top:6px;left:6px;font-size:10.5px;font-weight:700;white-space:nowrap;color:{{ bd.color }}">급격한 변화</div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ fC.hasAvg }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:0;right:0;top:{{ fC.avgTop }};border-top:1.5px dashed #3A4350"></div>
+        </sc-if>
+        <svg viewBox="0 0 1000 300" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+          <path d="{{ fC.lo }}" style="fill:none;stroke:oklch(0.62 0.19 255);stroke-width:2.25px;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke"></path>
+          <path d="{{ fC.hi }}" style="fill:none;stroke:oklch(0.62 0.19 25);stroke-width:2.25px;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke"></path>
+        </svg>
+        <sc-if value="{{ fC.hasAvg }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;right:0;top:{{ fC.avgTop }};transform:translateY(calc(-100% - 4px));font-size:11.5px;font-weight:700;color:#3A4350;background:rgba(255,255,255,0.92);padding:1px 6px;border-radius:5px;font-variant-numeric:tabular-nums">{{ fC.avgLabel }}</div>
+        </sc-if>
+        <sc-if value="{{ fC.head.show }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;left:{{ fC.head.left }};top:{{ fC.head.top }};width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:{{ fC.head.color }};box-shadow:0 0 0 4px rgba(15,20,25,0.08)"></div>
+        </sc-if>
+        <sc-for list="{{ fC.anomalies }}" as="a" hint-placeholder-count="0">
+          <div style="position:absolute;left:{{ a.left }};top:{{ a.top }};width:0;height:0">
+            <div style="position:absolute;left:-6px;top:-6px;width:12px;height:12px;border-radius:50%;background:#FFFFFF;border:2.5px solid oklch(0.75 0.15 70)"></div>
+            <div style="position:absolute;left:0;top:0;transform:{{ a.tx }};white-space:nowrap;display:flex;align-items:center;gap:6px;height:24px;padding:0 9px 0 6px;border-radius:7px;background:oklch(0.975 0.035 85);border:1px solid oklch(0.88 0.08 80);font-size:11.5px;font-weight:600;color:oklch(0.43 0.1 60)">
+              <span style="width:14px;height:14px;border-radius:50%;background:oklch(0.75 0.15 70);color:#FFFFFF;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center">!</span>
+              <span style="font-variant-numeric:tabular-nums;font-weight:700">{{ a.label }}</span><span>오류 가능성</span>
+            </div>
+          </div>
+        </sc-for>
+        <sc-if value="{{ fC.empty.show }}" hint-placeholder-val="{{ false }}">
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:13.5px;color:#8A93A0;font-weight:500">{{ fC.empty.text }}</div>
+        </sc-if>
+        <sc-for list="{{ fC.ticks }}" as="k" hint-placeholder-count="4">
+          <div style="position:absolute;top:calc(100% + 8px);left:{{ k.left }};transform:translateX(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums;white-space:nowrap">{{ k.label }}</div>
+        </sc-for>
+      </div>
+    </div>
+  </div>
+
+  <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:18px 22px;display:flex;flex-wrap:wrap;align-items:center;gap:16px 28px">
+    <div style="display:flex;align-items:center;gap:16px;padding:12px 20px;border-radius:12px;background:{{ sum.bg }}">
+      <div>
+        <div style="font-size:13px;font-weight:700;color:#0F1419">변화량</div>
+        <div style="font-size:12px;color:#5B6573;margin-top:2px">집중 − 보통</div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:6px;color:{{ sum.color }}">
+        <span style="font-size:15px;font-weight:700">{{ sum.arrow }}</span>
+        <span style="font-size:40px;font-weight:700;letter-spacing:-0.035em;font-variant-numeric:tabular-nums;line-height:1">{{ sum.d }}</span>
+        <span style="font-size:15px;font-weight:700">BPM</span>
+      </div>
+    </div>
+    <div style="font-size:15px;color:#5B6573;font-weight:600;font-variant-numeric:tabular-nums">{{ sum.formula }}</div>
+    <div style="flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:4px">
+      <div style="font-size:14.5px;color:#0F1419;line-height:1.5;text-wrap:pretty">{{ sum.text }}</div>
+      <sc-if value="{{ sum.hasBad }}" hint-placeholder-val="{{ false }}">
+        <div style="font-size:12.5px;color:oklch(0.48 0.11 60);line-height:1.5">{{ sum.badText }}</div>
+      </sc-if>
+    </div>
+  </div>
+
+  <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:18px 22px 16px;display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="font-size:16px;font-weight:700">맥박 RR 간격</div>
+        <div style="font-size:13px;color:#5B6573">심박과 심박 사이의 시간 (ms)</div>
+        <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;border:1px solid #D5D9DF;color:#3A4350;font-size:12px;font-weight:700">참고용 관찰 지표</span>
+      </div>
+      <div style="font-size:12.5px;color:#8A93A0">센서 특성상 실제 값과 차이가 있을 수 있어요</div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:20px 32px;align-items:stretch">
+      <div style="flex:1 1 520px;min-width:0;position:relative;height:150px;margin-left:42px">
+        <div style="position:absolute;left:0;top:0;bottom:0;width:50%;background:#F8F9FA;border-radius:8px 0 0 8px"></div>
+        <div style="position:absolute;left:50%;top:0;bottom:0;width:50%;background:#F8F9FA;border-radius:0 8px 8px 0;border-left:1px dashed #D5D9DF"></div>
+        <div style="position:absolute;left:10px;top:8px;font-size:11.5px;font-weight:700;color:#5B6573">보통 상태</div>
+        <div style="position:absolute;left:calc(50% + 10px);top:8px;font-size:11.5px;font-weight:700;color:#5B6573">집중 상태</div>
+        <div style="position:absolute;left:0;right:0;top:21.43%;border-top:1px solid #ECEEF1"></div>
+        <div style="position:absolute;left:0;right:0;top:50%;border-top:1px solid #ECEEF1"></div>
+        <div style="position:absolute;left:0;right:0;top:78.57%;border-top:1px solid #ECEEF1"></div>
+        <div style="position:absolute;left:-42px;width:34px;text-align:right;top:21.43%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">1000</div>
+        <div style="position:absolute;left:-42px;width:34px;text-align:right;top:50%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">800</div>
+        <div style="position:absolute;left:-42px;width:34px;text-align:right;top:78.57%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">600</div>
+        <svg viewBox="0 0 1000 200" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+          <path d="{{ rr.d }}" style="fill:none;stroke:#3A4350;stroke-width:1.75px;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke"></path>
+        </svg>
+        <sc-for list="{{ rr.anomalies }}" as="a" hint-placeholder-count="0">
+          <div style="position:absolute;left:{{ a.left }};top:{{ a.top }};width:0;height:0">
+            <div style="position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:#FFFFFF;border:2.5px solid oklch(0.75 0.15 70)"></div>
+            <div style="position:absolute;left:0;top:0;transform:{{ a.tx }};white-space:nowrap;height:20px;display:flex;align-items:center;padding:0 7px;border-radius:6px;background:oklch(0.975 0.035 85);border:1px solid oklch(0.88 0.08 80);font-size:11px;font-weight:700;color:oklch(0.43 0.1 60);font-variant-numeric:tabular-nums">{{ a.label }}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="flex:0 1 280px;min-width:240px;display:flex;flex-direction:column;justify-content:center;gap:10px">
+        <div style="display:grid;grid-template-columns:52px 1fr 1fr;gap:8px 12px;align-items:baseline;font-variant-numeric:tabular-nums">
+          <div></div>
+          <div style="font-size:12px;color:#8A93A0;font-weight:600">평균 간격</div>
+          <div style="font-size:12px;color:#8A93A0;font-weight:600">변동성</div>
+          <sc-for list="{{ rr.rows }}" as="r" hint-placeholder-count="2">
+            <div style="font-size:13px;font-weight:700;color:#3A4350">{{ r.name }}</div>
+            <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em">{{ r.avg }}<span style="font-size:12px;color:#5B6573;font-weight:600;margin-left:3px">ms</span></div>
+            <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em">{{ r.v }}<span style="font-size:12px;color:#5B6573;font-weight:600;margin-left:3px">ms</span></div>
+          </sc-for>
+        </div>
+        <div style="font-size:12px;color:#5B6573;line-height:1.5;text-wrap:pretty;border-top:1px solid #EEF0F3;padding-top:10px">변동성(RMSSD)은 이웃한 간격끼리의 차이예요. 긴장·집중할 때는 간격이 짧아지고 변동성이 작아지는 경향이 있어요.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;colorMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;평균 기준&quot;,&quot;변화 방향&quot;],&quot;default&quot;:&quot;변화 방향&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;그래프&quot;},&quot;anomalyThreshold&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:15,&quot;max&quot;:60,&quot;step&quot;:5,&quot;unit&quot;:&quot;BPM&quot;,&quot;default&quot;:45,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;그래프&quot;},&quot;phaseSeconds&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:10,&quot;max&quot;:60,&quot;step&quot;:5,&quot;unit&quot;:&quot;초&quot;,&quot;default&quot;:35,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;측정&quot;},&quot;startWithDemo&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;측정&quot;}}">
+const RED = 'oklch(0.62 0.19 25)', BLUE = 'oklch(0.62 0.19 255)';
+const RED_T = 'oklch(0.965 0.02 25)', BLUE_T = 'oklch(0.965 0.02 255)';
+const PROF = {
+  normal: u => 72 + 2.6 * Math.sin(u * 0.55) + 1.5 * Math.sin(u * 1.7 + 1),
+  focus: u => 78.5 + 15 * Math.exp(-(((u - 6) / 3.6) ** 2)) + 2.4 * Math.sin(u * 0.9 + 0.5) - 7 * Math.exp(-(((u - 24) / 3.2) ** 2)) + 3 * Math.exp(-(((u - 14) / 2.5) ** 2))
+};
+const HRV = { normal: { amp: 38, noise: 12 }, focus: { amp: 14, noise: 6 } };
+function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+const median = a => { const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const fmt = s => { s = Math.max(0, Math.round(s)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+const P2 = n => n.toFixed(2) + '%';
+const f1 = n => n.toFixed(1);
+function chipTx(l, t) { const x = l > 68 ? 'calc(-100% - 12px)' : '12px'; const y = t < 12 ? '-15%' : t > 88 ? '-85%' : '-50%'; return `translate(${x}, ${y})`; }
+
+function genPhase(p, D, rand, art, target) {
+  const out = []; let t = 0, pending = art;
+  for (;;) {
+    const h = HRV[p];
+    let rr = 60000 / PROF[p](t / D * 30) + h.amp * Math.sin(2 * Math.PI * t / 4.2) + h.noise * (rand() * 2 - 1);
+    let isArt = false;
+    if (pending && t >= pending.t) { rr = pending.kind === 'spike' ? 316 : rr * 2; isArt = true; pending = null; }
+    t += rr / 1000; if (t > D) break;
+    out.push({ t, rr, bpm: 60000 / rr, art: isArt });
+  }
+  const v = out.filter(b => !b.art), off = target - mean(v.map(b => b.bpm));
+  v.forEach(b => { b.bpm += off; b.rr = 60000 / b.bpm; });
+  return out.map(b => ({ t: b.t, rr: b.rr, bpm: b.bpm }));
+}
+
+function analyze(beats, thr) {
+  const out = [], vb = [];
+  for (const b of beats) {
+    const recent = vb.slice(-5);
+    let bad = b.bpm > 180 || b.bpm < 40;
+    if (!bad && recent.length >= 3 && Math.abs(b.bpm - median(recent)) > thr) bad = true;
+    let s = null;
+    if (!bad) { vb.push(b.bpm); s = mean(vb.slice(-3)); }
+    out.push({ ...b, bad, s });
+  }
+  const valid = out.filter(b => !b.bad);
+  const avg = valid.length ? mean(valid.map(b => b.bpm)) : null;
+  const rrAvg = valid.length ? mean(valid.map(b => b.rr)) : null;
+  let sq = 0, n = 0;
+  for (let i = 1; i < out.length; i++) if (!out[i].bad && !out[i - 1].bad) { const d = out[i].rr - out[i - 1].rr; sq += d * d; n++; }
+  const events = []; let lastEv = -1e9;
+  for (let i = 0; i < valid.length; i++) {
+    const b = valid[i]; let j = i;
+    while (j > 0 && valid[j - 1].t >= b.t - 5) j--;
+    const a = valid[j];
+    if (b.t - a.t < 3) continue;
+    const d = b.s - a.s;
+    if (Math.abs(d) >= 10 && b.t - lastEv > 8) { events.push({ t0: a.t, t1: b.t, d }); lastEv = b.t; }
+  }
+  return { beats: out, valid, avg, rrAvg, rmssd: n ? Math.sqrt(sq / n) : null, bad: out.filter(b => b.bad), events };
+}
+
+function bpmChart(A, D, mode, live) {
+  const W = 1000, H = 300, lo = 50, hi = 130;
+  const X = t => Math.max(0, Math.min(W, t / D * W));
+  const Y = v => H - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * H;
+  const pts = A.valid.map(b => ({ x: X(b.t), y: Y(b.s), v: b.s }));
+  const ref = A.avg ?? 0;
+  let hp = '', lp = '', lh = null, ll = null;
+  const add = (up, a, b) => {
+    if (up) { if (lh !== a) hp += `M${f1(a.x)} ${f1(a.y)}`; hp += `L${f1(b.x)} ${f1(b.y)}`; lh = b; }
+    else { if (ll !== a) lp += `M${f1(a.x)} ${f1(a.y)}`; lp += `L${f1(b.x)} ${f1(b.y)}`; ll = b; }
+  };
+  for (let i = 1; i < pts.length; i++) {
+    const p = pts[i - 1], q = pts[i];
+    if (mode === 'trend') { add(q.v >= p.v, p, q); continue; }
+    const sp = p.v >= ref, sq = q.v >= ref;
+    if (sp === sq) add(sp, p, q);
+    else { const k = (ref - p.v) / (q.v - p.v); const c = { x: p.x + (q.x - p.x) * k, y: Y(ref), v: ref }; add(sp, p, c); add(sq, c, q); }
+  }
+  const last = pts[pts.length - 1], prev = pts[pts.length - 2];
+  const headUp = last ? (mode === 'trend' ? (prev ? last.v >= prev.v : true) : last.v >= ref) : true;
+  const step = D <= 20 ? 5 : D <= 40 ? 10 : 15, ticks = [];
+  for (let s = 0; s <= D + 0.001; s += step) ticks.push({ left: P2(X(s) / W * 100), label: s === 0 ? '0' : s + '초' });
+  return {
+    hi: hp, lo: lp,
+    hasAvg: A.valid.length >= 3,
+    avgTop: P2(Y(ref) / H * 100),
+    avgLabel: `평균 ${Math.round(ref)}`,
+    head: live && last ? { show: true, left: P2(last.x / W * 100), top: P2(last.y / H * 100), color: headUp ? RED : BLUE } : { show: false },
+    anomalies: A.bad.map(b => { const l = X(b.t) / W * 100, t = Y(b.bpm) / H * 100; return { left: P2(l), top: P2(t), label: Math.round(b.bpm) + ' BPM', tx: chipTx(l, t) }; }),
+    bands: A.events.map(e => ({ left: P2(X(e.t0) / W * 100), width: P2((X(e.t1) - X(e.t0)) / W * 100), bg: e.d > 0 ? 'oklch(0.62 0.19 25 / 0.07)' : 'oklch(0.62 0.19 255 / 0.07)', color: e.d > 0 ? 'oklch(0.5 0.17 25)' : 'oklch(0.5 0.17 255)' })),
+    ticks
+  };
+}
+
+function rrChart(N, F, Dn, Df) {
+  const W = 1000, H = 200, lo = 450, hi = 1150;
+  const Y = v => H - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * H;
+  let d = ''; const anomalies = [];
+  [[N, Dn, 0], [F, Df, 500]].forEach(([A, D, x0]) => {
+    let first = true;
+    A.beats.forEach(b => {
+      const x = x0 + Math.max(0, Math.min(500, b.t / D * 500)), y = Y(b.rr);
+      if (b.bad) { const l = x / W * 100, t = y / H * 100; anomalies.push({ left: P2(l), top: P2(t), label: Math.round(b.rr) + ' ms', tx: chipTx(l, t) }); return; }
+      d += (first ? 'M' : 'L') + f1(x) + ' ' + f1(y); first = false;
+    });
+  });
+  const row = (name, A) => ({ name, avg: A.rrAvg != null && A.valid.length >= 3 ? String(Math.round(A.rrAvg)) : '—', v: A.rmssd != null && A.valid.length >= 3 ? String(Math.round(A.rmssd)) : '—' });
+  return { d, anomalies, rows: [row('보통', N), row('집중', F)] };
+}
+
+const CTL = {
+  ready: { title: '보통 상태 측정', desc: '편안히 앉아 손가락 끝을 센서에 가볍게 올려 주세요.', primary: '측정 시작' },
+  normal: { title: '보통 상태 측정 중', desc: '움직이지 말고 편안하게 호흡하세요.', primary: '' },
+  between: { title: '집중 상태 측정', desc: '과제에 집중할 준비가 되면 시작하세요.', primary: '측정 시작' },
+  focus: { title: '집중 상태 측정 중', desc: '과제에 집중하세요. 센서에서 손을 떼지 마세요.', primary: '' },
+  done: { title: '측정 완료', desc: '아래 그래프에서 두 상태를 비교해 보세요.', primary: '다시 측정' }
+};
+
+function makeHeart3D(THREE) {
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const bumps = (x, y, z) => 0.012 * Math.sin(7.1 * x + 1.3) * Math.sin(6.3 * y + 0.4) * Math.sin(8.2 * z + 2.1)
+  + 0.006 * Math.sin(15 * x + 3) * Math.sin(13 * y + 1) * Math.sin(14 * z);
+const gx = y => 0.06 - 0.16 * y; // anterior interventricular groove
+const TILT = 0.42, OFF_X = 0.2, PIVOT = V(-0.15, 0.78, 0), CY = 0.95;
+
+function vDeform(x, y, z, out = 1) {
+  let r = 1 + bumps(x, y, z);
+  if (z > 0) r *= 1 - 0.06 * Math.exp(-(((x - gx(y)) / 0.1) ** 2)) * Math.min(1, z * 2.5);
+  const k = y < 0 ? 1 + 0.36 * y - 0.08 * y * y : 1 + 0.05 * y;
+  const X = x * k * r * (x < 0 ? 1.07 : 1) * out, Y = y * 1.1 * r * out, Z = z * k * r * 0.84 * out;
+  const c = Math.cos(TILT), s = Math.sin(TILT);
+  return V(X * c - Y * s + OFF_X, X * s + Y * c, Z);
+}
+
+function smoothNormals(geo) {
+  geo.computeVertexNormals();
+  const p = geo.attributes.position, n = geo.attributes.normal, map = new Map();
+  for (let i = 0; i < p.count; i++) {
+    const k = p.getX(i).toFixed(4) + ',' + p.getY(i).toFixed(4) + ',' + p.getZ(i).toFixed(4);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(i);
+  }
+  const t = new THREE.Vector3();
+  map.forEach(ids => {
+    if (ids.length < 2) return;
+    t.set(0, 0, 0);
+    ids.forEach(i => { t.x += n.getX(i); t.y += n.getY(i); t.z += n.getZ(i); });
+    t.normalize();
+    ids.forEach(i => n.setXYZ(i, t.x, t.y, t.z));
+  });
+  n.needsUpdate = true;
+}
+
+function blob(sx, sy, sz, seed, amp = 0.03) {
+  const g = new THREE.SphereGeometry(1, 64, 48), a = g.attributes.position;
+  for (let i = 0; i < a.count; i++) {
+    const x = a.getX(i), y = a.getY(i), z = a.getZ(i);
+    const r = 1 + amp * Math.sin(5 * x + seed) * Math.sin(4 * y + seed * 2) * Math.sin(6 * z + seed * 0.5) + bumps(x, y, z);
+    a.setXYZ(i, x * r * sx, y * r * sy, z * r * sz);
+  }
+  smoothNormals(g);
+  return g;
+}
+
+function mountHeartInner(el) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.setClearColor(0x000000, 0);
+  const cv = renderer.domElement;
+  Object.assign(cv.style, { width: '100%', height: '100%', display: 'block', cursor: 'grab', touchAction: 'none' });
+  el.appendChild(cv);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
+  scene.add(new THREE.HemisphereLight(0xfff4f2, 0x40202a, 1.1));
+  const key = new THREE.DirectionalLight(0xffffff, 2.6); key.position.set(3, 5, 6); scene.add(key);
+  const rim = new THREE.DirectionalLight(0xffd6d0, 1.8); rim.position.set(-4, 2, -5); scene.add(rim);
+  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.7); fill.position.set(-5, -1, 3); scene.add(fill);
+
+  const root = new THREE.Group(); root.position.y = CY; scene.add(root);
+  const model = new THREE.Group(); model.position.y = -CY; root.add(model);
+
+  // ventricles
+  const muscle = new THREE.MeshPhysicalMaterial({ color: 0xb02a33, roughness: 0.38, clearcoat: 0.8, clearcoatRoughness: 0.22, sheen: 0.5, sheenColor: new THREE.Color(0xff9a9a), sheenRoughness: 0.5 });
+  const atriumMat = muscle.clone(); atriumMat.color.set(0x8f2232);
+  const vg = new THREE.SphereGeometry(1, 112, 84), pa = vg.attributes.position;
+  for (let i = 0; i < pa.count; i++) {
+    const q = vDeform(pa.getX(i), pa.getY(i), pa.getZ(i)).sub(PIVOT);
+    pa.setXYZ(i, q.x, q.y, q.z);
+  }
+  smoothNormals(vg);
+  const vent = new THREE.Mesh(vg, muscle);
+  vent.position.copy(PIVOT);
+  model.add(vent);
+
+  // atria + auricles
+  const atria = [];
+  const addAtrium = (g, p, rz, mat) => { const m = new THREE.Mesh(g, mat); m.position.set(...p); m.rotation.z = rz; model.add(m); atria.push(m); };
+  addAtrium(blob(0.5, 0.45, 0.48, 1.2), [-0.85, 0.95, 0.0], 0, atriumMat);
+  addAtrium(blob(0.5, 0.38, 0.4, 2.7), [0.35, 1.05, -0.5], 0, atriumMat);
+  addAtrium(blob(0.28, 0.17, 0.16, 0.6, 0.08), [-0.58, 1.15, 0.42], 0.5, atriumMat);
+  addAtrium(blob(0.25, 0.14, 0.15, 3.3, 0.08), [0.74, 1.0, 0.36], -0.6, atriumMat);
+
+  // coronary vessels on the ventricle surface
+  const corA = new THREE.MeshPhysicalMaterial({ color: 0xd8333a, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.15 });
+  const corV = new THREE.MeshPhysicalMaterial({ color: 0x4a62c9, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.15 });
+  const onV = (x, y, z, out) => { const l = Math.hypot(x, y, z); return vDeform(x / l, y / l, z / l, out).sub(PIVOT); };
+  const surf = (pts, R, mat) => vent.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'centripetal'), 72, R, 8, false), mat));
+  const sz = (x, y) => Math.sqrt(Math.max(0.01, 1 - x * x - y * y));
+  let pts = [];
+  for (let y = 0.74; y >= -0.9; y -= 0.06) pts.push(onV(gx(y), y, sz(gx(y), y), 1.012));
+  surf(pts, 0.03, corA);
+  pts = []; for (let y = 0.68; y >= -0.7; y -= 0.07) { const x = gx(y) + 0.075; pts.push(onV(x, y, sz(x, y), 1.016)); }
+  surf(pts, 0.022, corV);
+  pts = []; for (let a = 0.1; a <= 2.5; a += 0.1) { const y = 0.6 - 0.05 * a, r = Math.sqrt(1 - y * y); pts.push(onV(-Math.sin(a) * r, y, Math.cos(a) * r, 1.015)); }
+  surf(pts, 0.032, corA);
+  pts = []; for (let a = -0.15; a >= -2.3; a -= 0.1) { const y = 0.64 + 0.03 * a, r = Math.sqrt(1 - y * y); pts.push(onV(-Math.sin(a) * r, y, Math.cos(a) * r, 1.015)); }
+  surf(pts, 0.028, corA);
+  [[0.35, 0.5, 0.42], [0.0, 0.42, 0.4]].forEach(([y0, dx, dy]) => {
+    pts = []; for (let t = 0; t <= 1.001; t += 0.1) { const x = gx(y0) + dx * t, y = y0 - dy * t; pts.push(onV(x, y, sz(x, y), 1.014)); }
+    surf(pts, 0.021, corA);
+  });
+  pts = []; for (let t = 0; t <= 1.001; t += 0.1) { const a = 1.0 + 0.2 * t, y = 0.55 - 0.8 * t, r = Math.sqrt(Math.max(0.05, 1 - y * y)); pts.push(onV(-Math.sin(a) * r, y, Math.cos(a) * r, 1.014)); }
+  surf(pts, 0.022, corA);
+
+  // great vessels (u = 0 at the heart; dir +1 = away from heart)
+  const wall = c => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.1, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide, vertexColors: true });
+  const wallRed = wall(0xe0484c), wallBlue = wall(0x5a7be0);
+  const vessels = [];
+  const RS = 20;
+  const vessel = (p, R, oxy, dir) => {
+    const curve = new THREE.CatmullRomCurve3(p.map(q => V(...q)), false, 'centripetal');
+    const len = curve.getLength(), segs = Math.max(24, Math.round(len * 28));
+    const geo = new THREE.TubeGeometry(curve, segs, R, RS, false);
+    const col = new Float32Array(geo.attributes.position.count * 4);
+    for (let i = 0; i <= segs; i++) {
+      const u = i / segs, al = u > 0.78 ? Math.max(0, 1 - (u - 0.78) / 0.22) : 1;
+      for (let j = 0; j <= RS; j++) { const k = (i * (RS + 1) + j) * 4; col[k] = col[k + 1] = col[k + 2] = 1; col[k + 3] = al; }
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 4));
+    const m = new THREE.Mesh(geo, oxy ? wallRed : wallBlue);
+    m.renderOrder = 2;
+    model.add(m);
+    vessels.push({ curve, geo, segs, R, oxy, dir, len });
+  };
+  // aorta + arch branches
+  vessel([[-0.02, 0.5, -0.02], [-0.05, 1.2, 0.05], [0.0, 1.85, 0.0], [0.2, 2.25, -0.2], [0.55, 2.25, -0.45], [0.78, 1.9, -0.6], [0.82, 1.2, -0.72], [0.8, 0.2, -0.78], [0.78, -0.8, -0.75]], 0.24, true, 1);
+  vessel([[0.12, 2.12, -0.12], [0.0, 2.55, -0.12], [-0.12, 3.0, -0.1]], 0.1, true, 1);
+  vessel([[0.36, 2.26, -0.3], [0.38, 2.65, -0.3], [0.4, 3.05, -0.3]], 0.075, true, 1);
+  vessel([[0.58, 2.18, -0.46], [0.72, 2.6, -0.5], [0.95, 2.95, -0.5]], 0.085, true, 1);
+  // pulmonary trunk + arteries (deoxygenated, away from heart)
+  vessel([[-0.3, 0.55, 0.45], [-0.22, 1.15, 0.58], [0.02, 1.6, 0.52], [0.28, 1.82, 0.25]], 0.2, false, 1);
+  vessel([[0.28, 1.82, 0.25], [0.7, 1.9, -0.05], [1.2, 1.82, -0.2], [1.6, 1.7, -0.25]], 0.13, false, 1);
+  vessel([[0.28, 1.82, 0.25], [-0.1, 1.78, -0.3], [-0.7, 1.72, -0.42], [-1.45, 1.62, -0.44]], 0.13, false, 1);
+  // venae cavae (into right atrium)
+  vessel([[-0.82, 1.2, -0.02], [-0.78, 2.0, -0.08], [-0.76, 2.8, -0.1]], 0.17, false, -1);
+  vessel([[-0.8, 0.62, -0.18], [-0.72, 0.0, -0.35], [-0.68, -0.9, -0.45]], 0.17, false, -1);
+  // pulmonary veins (oxygenated, into left atrium)
+  vessel([[0.6, 1.15, -0.55], [1.0, 1.25, -0.6], [1.4, 1.3, -0.62]], 0.085, true, -1);
+  vessel([[0.6, 0.92, -0.6], [1.0, 0.85, -0.65], [1.36, 0.8, -0.66]], 0.085, true, -1);
+  vessel([[0.1, 1.12, -0.75], [-0.25, 1.2, -0.95], [-0.55, 1.25, -1.05]], 0.08, true, -1);
+  vessel([[0.1, 0.92, -0.78], [-0.25, 0.85, -0.98], [-0.52, 0.8, -1.08]], 0.08, true, -1);
+
+  // blood cells
+  const cellGeo = new THREE.SphereGeometry(1, 10, 8);
+  const cellMat = c => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.35, roughness: 0.45 });
+  const cells = { red: [], blue: [] };
+  vessels.forEach(vs => {
+    const n = Math.max(8, Math.min(80, Math.round(vs.len * 26 * Math.min(1.3, vs.R / 0.18))));
+    for (let k = 0; k < n; k++) cells[vs.oxy ? 'red' : 'blue'].push({
+      vs, u: Math.random(), a: Math.random() * Math.PI * 2, d: Math.sqrt(Math.random()) * 0.58 * vs.R,
+      s: Math.min(0.06, vs.R * 0.36) * (0.8 + Math.random() * 0.4), sp: 0.85 + Math.random() * 0.3,
+      rot: new THREE.Euler(Math.random() * 6, Math.random() * 6, 0), spin: (Math.random() - 0.5) * 2
+    });
+  });
+  const meshRed = new THREE.InstancedMesh(cellGeo, cellMat(0xff2e36), cells.red.length);
+  const meshBlue = new THREE.InstancedMesh(cellGeo, cellMat(0x3b55e0), cells.blue.length);
+  meshRed.renderOrder = meshBlue.renderOrder = 1;
+  model.add(meshRed, meshBlue);
+
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
+  const updCells = (list, mesh, dt, fArt, fVen) => {
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i], vs = c.vs, f = vs.dir > 0 ? fArt : fVen;
+      c.u = (((c.u + vs.dir * f * c.sp * dt / vs.len) % 1) + 1) % 1;
+      const idx = Math.round(c.u * vs.segs);
+      vs.curve.getPointAt(c.u, pos);
+      pos.addScaledVector(vs.geo.normals[idx], Math.cos(c.a) * c.d).addScaledVector(vs.geo.binormals[idx], Math.sin(c.a) * c.d);
+      c.rot.x += c.spin * dt;
+      q.setFromEuler(c.rot);
+      const s = c.s * (c.u > 0.8 ? Math.max(0, 1 - (c.u - 0.8) / 0.2) : 1);
+      sc.set(s, s * 0.5, s);
+      m4.compose(pos, q, sc);
+      mesh.setMatrixAt(i, m4);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+
+  // interaction
+  let yaw = 0, pitch = 0, drag = null;
+  cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, yaw, pitch }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; });
+  cv.addEventListener('pointermove', e => { if (!drag) return; yaw = drag.yaw + (e.clientX - drag.x) * 0.012; pitch = Math.max(-0.5, Math.min(0.5, drag.pitch + (e.clientY - drag.y) * 0.008)); });
+  const up = () => { drag = null; cv.style.cursor = 'grab'; };
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', up);
+
+  const ro = new ResizeObserver(() => {
+    const w = el.clientWidth, h = el.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const d = Math.max(2.2 / t, 1.65 / (t * camera.aspect)) * 1.04;
+    camera.position.set(0, CY, d);
+    camera.lookAt(0, CY, 0);
+    camera.updateProjectionMatrix();
+  });
+  ro.observe(el);
+
+  let lastBeat = -10, last = performance.now() / 1000, raf = 0;
+  const ease = x => x * x * (3 - 2 * x);
+  const frame = () => {
+    const now = performance.now() / 1000, dt = Math.min(0.05, now - last), tb = now - lastBeat;
+    last = now;
+    const a = Math.exp(-(((tb - 0.05) / 0.045) ** 2));
+    const c = tb < 0.05 ? 0 : tb < 0.17 ? ease((tb - 0.05) / 0.12) : tb < 0.46 ? 1 - ease((tb - 0.17) / 0.29) : 0;
+    vent.scale.set(1 - 0.09 * c, 1 - 0.05 * c, 1 - 0.09 * c);
+    vent.rotation.y = 0.05 * c;
+    atria.forEach(m => m.scale.setScalar(1 - 0.1 * a));
+    const surge = tb < 0.06 ? tb / 0.06 : Math.exp(-(tb - 0.06) / 0.2);
+    updCells(cells.red, meshRed, dt, 0.35 + 2.4 * surge, 0.45 + 0.35 * Math.exp(-tb / 0.5));
+    updCells(cells.blue, meshBlue, dt, 0.35 + 2.4 * surge, 0.45 + 0.35 * Math.exp(-tb / 0.5));
+    root.rotation.set(0.06 + pitch, yaw + (drag ? 0 : 0) + 0.45 * Math.sin(now * 0.32), 0);
+    renderer.render(scene, camera);
+    raf = requestAnimationFrame(frame);
+  };
+  raf = requestAnimationFrame(frame);
+
+  return {
+    beat() { lastBeat = performance.now() / 1000; },
+    dispose() {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      renderer.dispose();
+      cv.remove();
+    }
+  };
+}
+return mountHeartInner;
+}
+
+class Component extends DCLogic {
+  heartRef = React.createRef();
+  heart3dRef = React.createRef();
+  canvasRef = React.createRef();
+  beatTimes = [];
+  liveVals = [];
+  t0 = performance.now();
+  state = (() => {
+    const r = rng(11);
+    return {
+      phase: 'done',
+      data: { normal: genPhase('normal', 30, r, { t: 18.5, kind: 'spike' }, 72), focus: genPhase('focus', 30, r, { t: 13.4, kind: 'miss' }, 81) },
+      dur: { normal: 30, focus: 30 },
+      phaseStart: 0, now: 0,
+      live: { bpm: 72, rr: 833, trend: 0 },
+      lastBadAt: -1e9
+    };
+  })();
+
+  componentDidMount() {
+    if (this.props.startWithDemo === false) this.setState({ phase: 'ready', data: { normal: [], focus: [] } });
+    this.nextBeat();
+    this.rafId = requestAnimationFrame(this.draw);
+    this.tryHeart(0);
+  }
+  componentWillUnmount() { this.unmounted = true; clearTimeout(this.heartTimer); clearTimeout(this.beatTimer); clearInterval(this.tick); cancelAnimationFrame(this.rafId); if (this.h3d) this.h3d.dispose(); }
+
+  tryHeart(n) {
+    if (this.unmounted || this.h3d) return;
+    const el = this.heart3dRef.current;
+    if (!window.THREE || !el) { if (n < 120) this.heartTimer = setTimeout(() => this.tryHeart(n + 1), 150); return; }
+    try { this.h3d = makeHeart3D(window.THREE)(el); if (this.heartRef.current) this.heartRef.current.style.display = 'none'; }
+    catch (e) { console.warn('3D heart unavailable', e); }
+  }
+
+  isMeas(ph) { return ph === 'normal' || ph === 'focus'; }
+
+  nextBeat = () => {
+    const st = this.state, now = performance.now(), meas = this.isMeas(st.phase);
+    const p = st.phase === 'focus' ? 'focus' : 'normal';
+    const t = meas ? (now - st.phaseStart) / 1000 : ((now - this.t0) / 1000) % 30;
+    const D = meas ? st.dur[p] : 30, h = HRV[p];
+    let rr = 60000 / PROF[p](t / D * 30) + h.amp * Math.sin(2 * Math.PI * now / 4200) + h.noise * (Math.random() * 2 - 1);
+    if (meas && this.pendingArt && t >= this.pendingArt.t) { rr = this.pendingArt.kind === 'spike' ? 316 : rr * 2; this.pendingArt = null; }
+    this.beatTimer = setTimeout(() => { this.onBeat(rr); this.nextBeat(); }, rr);
+  };
+
+  onBeat = (rr) => {
+    const now = performance.now(), st = this.state, bpm = 60000 / rr;
+    const thr = this.props.anomalyThreshold ?? 30;
+    const recent = this.liveVals.slice(-5);
+    const bad = bpm > 180 || bpm < 40 || (recent.length >= 3 && Math.abs(bpm - median(recent)) > thr);
+    this.beatTimes.push(now / 1000);
+    this.beatTimes = this.beatTimes.filter(b => now / 1000 - b < 4.5);
+    if (!bad) { this.liveVals.push(bpm); if (this.liveVals.length > 12) this.liveVals.shift(); this.pump(rr); }
+    const lv = this.liveVals, l3 = lv.slice(-3), p3 = lv.slice(-6, -3);
+    const live = bad || !l3.length ? st.live : { bpm: Math.round(mean(l3)), rr: Math.round(rr), trend: p3.length === 3 ? mean(l3) - mean(p3) : 0 };
+    const upd = { live, lastBadAt: bad ? now : st.lastBadAt };
+    if (this.isMeas(st.phase)) {
+      const t = (now - st.phaseStart) / 1000;
+      if (t <= st.dur[st.phase]) upd.data = { ...st.data, [st.phase]: [...st.data[st.phase], { t, rr, bpm }] };
+    }
+    this.setState(upd);
+  };
+
+  pump(rr) {
+    if (this.h3d) { this.h3d.beat(rr); return; }
+    const h = this.heartRef.current, d = Math.max(260, Math.min(560, rr * 0.62));
+    if (h && h.animate) h.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.17)', offset: 0.14 }, { transform: 'scale(0.97)', offset: 0.34 }, { transform: 'scale(1.07)', offset: 0.5 }, { transform: 'scale(1)' }], { duration: d, easing: 'ease-out' });
+  }
+
+  draw = () => {
+    const c = this.canvasRef.current;
+    if (c && c.clientWidth > 0) {
+      const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+      if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+      const ctx = c.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const now = performance.now() / 1000, win = 3.2, bt = this.beatTimes;
+      ctx.beginPath();
+      let ly = h - 6;
+      for (let x = 0; x <= w; x += 2) {
+        const tt = now - win + x / w * win; let v = 0;
+        for (const b of bt) { const d = tt - b; if (d > 0 && d < 1.2) v += Math.exp(-(((d - 0.12) / 0.055) ** 2)) + 0.36 * Math.exp(-(((d - 0.34) / 0.08) ** 2)); }
+        ly = h - 6 - Math.min(1.15, v) * (h - 14);
+        x ? ctx.lineTo(x, ly) : ctx.moveTo(x, ly);
+      }
+      const g = ctx.createLinearGradient(0, 0, w, 0);
+      g.addColorStop(0, 'oklch(0.62 0.19 25 / 0)');
+      g.addColorStop(0.3, RED);
+      g.addColorStop(1, RED);
+      ctx.strokeStyle = g; ctx.lineWidth = 2; ctx.lineJoin = 'round'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(w - 3, ly, 3, 0, Math.PI * 2); ctx.fillStyle = RED; ctx.fill();
+    }
+    this.rafId = requestAnimationFrame(this.draw);
+  };
+
+  startTick() {
+    clearInterval(this.tick);
+    this.tick = setInterval(() => {
+      const st = this.state;
+      if (!this.isMeas(st.phase)) { clearInterval(this.tick); return; }
+      const now = performance.now();
+      if ((now - st.phaseStart) / 1000 >= st.dur[st.phase]) { clearInterval(this.tick); this.setState({ phase: st.phase === 'normal' ? 'between' : 'done', now }); }
+      else this.setState({ now });
+    }, 200);
+  }
+
+  startPhase(p) {
+    const now = performance.now(), D = this.props.phaseSeconds ?? 30;
+    this.pendingArt = Math.random() < 0.7 ? { t: D * (0.35 + Math.random() * 0.4), kind: p === 'normal' || Math.random() < 0.5 ? 'spike' : 'miss' } : null;
+    this.setState(s => ({ phase: p, phaseStart: now, now, dur: { ...s.dur, [p]: D }, data: p === 'normal' ? { normal: [], focus: [] } : { ...s.data, focus: [] } }));
+    this.startTick();
+  }
+
+  onPrimary = () => {
+    const ph = this.state.phase;
+    if (ph === 'ready' || ph === 'done') this.startPhase('normal');
+    else if (ph === 'between') this.startPhase('focus');
+  };
+  onStop = () => {
+    clearInterval(this.tick);
+    this.setState(s => s.phase === 'normal' ? { phase: 'ready', data: { normal: [], focus: [] } } : { phase: 'between', data: { ...s.data, focus: [] } });
+  };
+  onReset = () => { clearInterval(this.tick); this.setState({ phase: 'ready', data: { normal: [], focus: [] } }); };
+
+  renderVals() {
+    const st = this.state, P = this.props;
+    const thr = P.anomalyThreshold ?? 30;
+    const mode = (P.colorMode ?? '평균 기준') === '변화 방향' ? 'trend' : 'avg';
+    const ph = st.phase, meas = this.isMeas(ph);
+    const N = analyze(st.data.normal, thr), F = analyze(st.data.focus, thr);
+    const D = meas ? st.dur[ph] : 0, el = meas ? Math.max(0, Math.min(D, (st.now - st.phaseStart) / 1000)) : 0;
+
+    const mk = (A, key) => {
+      const live = ph === key, c = bpmChart(A, st.dur[key], mode, live), has = A.valid.length >= 2;
+      c.status = live ? { text: `측정 중 · ${fmt(el)}`, live: true } : has ? { text: '측정 완료', live: false } : { text: '대기', live: false };
+      c.avgText = A.valid.length >= 3 ? String(Math.round(A.avg)) : '—';
+      c.empty = has ? { show: false, text: '' } : { show: true, text: live ? '신호 수집 중…' : '측정 전' };
+      return c;
+    };
+
+    const idx = { ready: 0, normal: 0, between: 1, focus: 1, done: 2 }[ph];
+    const steps = ['보통 상태 측정', '집중 상태 측정', '결과 비교'].map((label, i) => {
+      let fill = '0%';
+      if (i < idx || ph === 'done') fill = '100%';
+      else if (i === idx && meas) fill = (el / D * 100).toFixed(1) + '%';
+      return { label: `${i + 1}. ${label}`, fill, color: i <= idx ? '#0F1419' : '#8A93A0' };
+    });
+
+    const nA = N.valid.length >= 3 ? Math.round(N.avg) : null, fA = F.valid.length >= 3 ? Math.round(F.avg) : null;
+    const d = nA != null && fA != null ? fA - nA : null;
+    const badCount = N.bad.length + F.bad.length;
+    const sum = {
+      d: d == null ? '—' : (d > 0 ? '+' : d < 0 ? '−' : '±') + Math.abs(d),
+      arrow: d == null || d === 0 ? '' : d > 0 ? '▲' : '▼',
+      color: d > 0 ? 'oklch(0.52 0.19 25)' : d < 0 ? 'oklch(0.52 0.19 255)' : '#0F1419',
+      bg: d > 0 ? RED_T : d < 0 ? BLUE_T : '#F3F4F6',
+      formula: d == null ? '집중 평균 − 보통 평균' : `${fA} − ${nA} = ${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d)}`,
+      text: d == null ? '보통 상태와 집중 상태를 모두 측정하면 변화량이 계산돼요.'
+        : d > 0 ? `집중할 때 심박수가 평균 ${d} BPM 높아졌어요. 교감신경이 활성화되면 심장 박동이 빨라져요.`
+        : d < 0 ? `집중할 때 심박수가 평균 ${Math.abs(d)} BPM 낮아졌어요. 부교감신경의 영향이 더 컸을 수 있어요.`
+        : '두 상태의 평균 심박수가 같아요.',
+      hasBad: badCount > 0,
+      badText: `오류 가능성으로 표시된 값 ${badCount}건은 평균 계산에서 제외했어요.`
+    };
+
+    const evs = [...N.events.map(e => ({ ...e, name: '보통' })), ...F.events.map(e => ({ ...e, name: '집중' }))];
+    const ev = evs[evs.length - 1];
+    const rapid = ev ? { has: true, none: false, text: `${ev.name} 상태 ${fmt(ev.t1)} · 5초 동안 ${ev.d > 0 ? '+' : '−'}${Math.abs(Math.round(ev.d))} BPM` } : { has: false, none: true, text: '' };
+
+    const unstable = performance.now() - st.lastBadAt < 3000;
+    const on = unstable ? 'oklch(0.75 0.15 70)' : 'oklch(0.66 0.15 155)';
+    const sensor = {
+      label: unstable ? '불안정' : '양호',
+      color: on,
+      bars: ['7px', '11px', '15px', '19px'].map((h, i) => ({ h, c: i < (unstable ? 2 : 4) ? on : '#E3E6EA' }))
+    };
+
+    const tr = st.live.trend;
+    const trend = tr > 1 ? { text: '▲ 빨라지는 중', color: 'oklch(0.5 0.18 25)', bg: RED_T } : tr < -1 ? { text: '▼ 느려지는 중', color: 'oklch(0.5 0.18 255)', bg: BLUE_T } : { text: '● 안정', color: '#3A4350', bg: '#F1F2F4' };
+
+    return {
+      heartRef: this.heartRef, heart3dRef: this.heart3dRef, canvasRef: this.canvasRef,
+      live: st.live, trend, sensor, rapid, steps,
+      ctl: CTL[ph], measuring: meas, notMeasuring: !meas, showReset: !meas && ph !== 'ready',
+      remain: fmt(D - el),
+      onPrimary: this.onPrimary, onStop: this.onStop, onReset: this.onReset,
+      legend: mode === 'trend' ? { hi: '빨라지는 구간', lo: '느려지는 구간' } : { hi: '평균보다 빠름', lo: '평균보다 느림' },
+      nC: mk(N, 'normal'), fC: mk(F, 'focus'),
+      sum,
+      rr: rrChart(N, F, st.dur.normal, st.dur.focus)
+    };
+  }
+}
+</script>
+</body>
+</html>

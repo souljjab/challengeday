@@ -1,0 +1,1341 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./vendor/react.production.min.js"></script>
+<script src="./vendor/react-dom.production.min.js"></script>
+<script src="./dc-bundle.js"></script>
+<script src="./heart-sensor.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="vendor/pretendard/pretendardvariable.css">
+  <script src="vendor/three.min.js"></script>
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;background:#F3F4F6}
+    body{font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#0F1419;-webkit-font-smoothing:antialiased;letter-spacing:-0.005em}
+    a{color:#0F1419}
+    a:hover{color:oklch(0.62 0.19 25)}
+    button,input{font-family:inherit}
+  </style>
+</helmet>
+<div style="max-width:1480px;margin:0 auto;padding:20px 28px 40px;display:flex;flex-direction:column;gap:18px">
+
+  <header style="display:flex;align-items:center;justify-content:space-between;gap:14px 24px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:38px;height:38px;border-radius:11px;background:#0F1419;display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#FFFFFF" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+      </div>
+      <div>
+        <div style="font-size:18px;font-weight:700;letter-spacing:-0.02em">심박 측정 실습</div>
+        <div style="font-size:13px;color:#5B6573;margin-top:1px">심장 박동 기반 생체 신호 분석 · 화생컴공</div>
+      </div>
+    </div>
+    <nav style="display:flex;align-items:center;gap:4px;flex-wrap:wrap">
+      <sc-for list="{{ stepper }}" as="s" hint-placeholder-count="5">
+        <button onClick="{{ s.go }}" style="display:flex;align-items:center;gap:8px;height:38px;padding:0 13px 0 6px;border-radius:999px;border:1px solid {{ s.border }};background:{{ s.bg }};cursor:pointer;font-size:13.5px;font-weight:600;color:{{ s.color }}" style-hover="background:#FFFFFF">
+          <span style="width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;background:{{ s.dotBg }};color:{{ s.dotColor }}">{{ s.mark }}</span>{{ s.label }}
+        </button>
+      </sc-for>
+    </nav>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:999px;background:#FFFFFF;border:1px solid #E6E8EC;font-size:12.5px;font-weight:600;color:#3A4350">
+        <span style="width:6px;height:6px;border-radius:50%;background:#8A93A0"></span>시뮬레이션 데이터
+      </span>
+      <a href="Heart%20Rate%20Monitor.dc.html" style="display:inline-flex;align-items:center;height:34px;padding:0 14px;border:1px solid #D5D9DF;border-radius:10px;background:#FFFFFF;color:#0F1419;font-size:13.5px;font-weight:600;text-decoration:none" style-hover="background:#F5F6F8;color:#0F1419">처음으로</a>
+    </div>
+  </header>
+
+  <div style="display:flex;flex-wrap:wrap;gap:18px;align-items:flex-start">
+
+    <aside style="flex:1 1 300px;max-width:360px;position:sticky;top:16px;display:flex;flex-direction:column;gap:12px">
+      <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:16px 20px 20px;display:flex;flex-direction:column">
+        <div style="position:relative;height:270px;margin:0 -8px">
+          <div style="position:absolute;left:50%;top:50%;width:210px;height:210px;margin:-105px 0 0 -105px;border-radius:50%;background:oklch(0.975 0.015 25)"></div>
+          <div ref="{{ heartRef }}" style="position:absolute;left:50%;top:50%;width:72px;height:72px;margin:-36px 0 0 -36px">
+            <svg width="72" height="72" viewBox="0 0 24 24" style="display:block"><path fill="oklch(0.62 0.19 25)" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+          </div>
+          <div ref="{{ heart3dRef }}" style="position:absolute;inset:0"></div>
+        </div>
+        <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:10px;margin-top:6px">
+          <div>
+            <div style="font-size:13px;color:#5B6573;font-weight:600">현재 심박수</div>
+            <div style="display:flex;align-items:baseline;gap:7px;margin-top:4px">
+              <span style="font-size:64px;font-weight:700;letter-spacing:-0.045em;line-height:0.95;font-variant-numeric:tabular-nums">{{ live.bpm }}</span>
+              <span style="font-size:17px;font-weight:600;color:#5B6573">BPM</span>
+            </div>
+          </div>
+          <span style="display:inline-flex;align-items:center;height:26px;padding:0 10px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap;background:{{ trend.bg }};color:{{ trend.color }}">{{ trend.text }}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid #EEF0F3;font-size:12px;color:#5B6573">
+          <span style="font-variant-numeric:tabular-nums">박동 간격 {{ live.rr }} ms</span>
+          <span style="display:flex;gap:10px">
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.62 0.21 25)"></span>산소 많은 혈액</span>
+            <span style="display:flex;align-items:center;gap:5px"><span style="width:8px;height:8px;border-radius:50%;background:oklch(0.55 0.2 270)"></span>산소 적은 혈액</span>
+          </span>
+        </div>
+      </div>
+
+      <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:16px 20px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+          <div style="display:flex;align-items:center;gap:8px">
+            <span style="font-size:13px;color:#5B6573;font-weight:600">센서 감지</span>
+            <span style="width:8px;height:8px;border-radius:50%;background:{{ sensor.color }}"></span>
+            <span style="font-size:15px;font-weight:700">{{ sensor.label }}</span>
+          </div>
+          <div style="display:flex;align-items:flex-end;gap:3px;height:18px">
+            <sc-for list="{{ sensor.bars }}" as="b" hint-placeholder-count="4">
+              <div style="width:5px;height:{{ b.h }};border-radius:1.5px;background:{{ b.c }}"></div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+
+      <sc-if value="{{ rapid.has }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:14px;background:oklch(0.965 0.02 25);border:1px solid oklch(0.9 0.05 25)">
+          <span style="width:24px;height:24px;flex:none;border-radius:7px;background:oklch(0.62 0.19 25);color:#FFFFFF;font-weight:800;font-size:13px;display:flex;align-items:center;justify-content:center">!</span>
+          <div style="min-width:0">
+            <div style="font-size:14px;font-weight:700;color:oklch(0.45 0.16 25)">급격한 변화 감지</div>
+            <div style="font-size:12.5px;color:#3A4350;font-variant-numeric:tabular-nums;margin-top:1px">{{ rapid.text }}</div>
+          </div>
+        </div>
+      </sc-if>
+    </aside>
+
+    <main style="flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:16px">
+
+      <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:16px 22px 14px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span style="width:8px;height:8px;border-radius:50%;background:oklch(0.62 0.19 25);box-shadow:0 0 0 4px oklch(0.62 0.19 25 / 0.15)"></span>
+            <span style="font-size:15px;font-weight:700">실시간 심장 박동</span>
+            <span style="font-size:12.5px;color:#8A93A0">최근 6초 · 광혈류(PPG) 신호 · 숫자는 박동별 BPM</span>
+          </div>
+          <div style="display:flex;align-items:baseline;gap:6px">
+            <span style="font-size:26px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ live.bpm }}</span>
+            <span style="font-size:13px;font-weight:600;color:#5B6573">BPM</span>
+          </div>
+        </div>
+        <canvas ref="{{ canvasRef }}" style="width:100%;height:120px;display:block"></canvas>
+      </div>
+
+      <sc-if value="{{ scr.home }}" hint-placeholder-val="{{ true }}">
+        <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:44px 48px;display:flex;flex-direction:column;gap:30px">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em">2026 챌린지데이 · 화생컴공 체험 부스</div>
+            <div style="font-size:40px;font-weight:700;letter-spacing:-0.035em;line-height:1.22;margin-top:12px;text-wrap:balance">심장 박동으로 알아보는<br>나의 몸 반응</div>
+            <div style="font-size:16px;color:#5B6573;line-height:1.6;margin-top:14px;max-width:620px;text-wrap:pretty">손가락 끝 센서로 심장 박동을 측정하고, 보통 상태와 집중 상태를 비교한 뒤 거짓말 탐지기 게임에 도전해요.</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px">
+            <div style="padding:18px 18px 16px;border-radius:12px;background:#F6F7F9;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:13px;font-weight:700;color:#8A93A0">01</div>
+              <div style="font-size:17px;font-weight:700">심장 박동 확인</div>
+              <div style="font-size:13.5px;color:#5B6573;line-height:1.5">센서를 붙이고 박동 신호가 안정되는지 확인해요.</div>
+              <div style="font-size:12.5px;color:#3A4350;font-weight:600;margin-top:auto;padding-top:8px">{{ times.check }}</div>
+            </div>
+            <div style="padding:18px 18px 16px;border-radius:12px;background:#F6F7F9;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:13px;font-weight:700;color:#8A93A0">02</div>
+              <div style="font-size:17px;font-weight:700">보통 상태 측정</div>
+              <div style="font-size:13.5px;color:#5B6573;line-height:1.5">편안히 앉아 기준이 되는 심박을 측정해요.</div>
+              <div style="font-size:12.5px;color:#3A4350;font-weight:600;margin-top:auto;padding-top:8px">{{ times.phase }}</div>
+            </div>
+            <div style="padding:18px 18px 16px;border-radius:12px;background:#F6F7F9;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:13px;font-weight:700;color:#8A93A0">03</div>
+              <div style="font-size:17px;font-weight:700">집중 상태 측정</div>
+              <div style="font-size:13.5px;color:#5B6573;line-height:1.5">뺄셈 암산에 집중하는 동안 심박 변화를 봐요.</div>
+              <div style="font-size:12.5px;color:#3A4350;font-weight:600;margin-top:auto;padding-top:8px">{{ times.phase }}</div>
+            </div>
+            <div style="padding:18px 18px 16px;border-radius:12px;background:#F6F7F9;display:flex;flex-direction:column;gap:6px">
+              <div style="font-size:13px;font-weight:700;color:#8A93A0">04</div>
+              <div style="font-size:17px;font-weight:700">거짓말 탐지기</div>
+              <div style="font-size:13.5px;color:#5B6573;line-height:1.5">질문에 답하고, 프로그램이 거짓 답을 찾아내요.</div>
+              <div style="font-size:12.5px;color:#3A4350;font-weight:600;margin-top:auto;padding-top:8px">{{ times.game }}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
+            <button onClick="{{ onStart }}" style="height:60px;padding:0 40px;border:none;border-radius:14px;background:#0F1419;color:#FFFFFF;font-size:18px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">실습 시작</button>
+            <div style="font-size:13px;color:#5B6573">체험이 끝난 기구는 소독하기 전까지 착용하지 마세요.</div>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.check }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:32px 36px;display:flex;flex-direction:column;gap:24px">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em">STEP 1 · 심장 박동 확인</div>
+            <div style="font-size:30px;font-weight:700;letter-spacing:-0.03em;margin-top:8px">심장 박동 확인</div>
+            <div style="font-size:16px;color:#5B6573;line-height:1.55;margin-top:8px;text-wrap:pretty">손가락 끝을 센서에 가볍게 올리고, 신호가 안정될 때까지 가만히 기다려 주세요.</div>
+          </div>
+          <div style="padding:22px 24px;border-radius:14px;background:#F6F7F9;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+              <div style="font-size:19px;font-weight:700">{{ chk.title }}</div>
+              <div style="font-size:14px;color:#5B6573;font-weight:600;font-variant-numeric:tabular-nums">{{ chk.sub }}</div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <sc-for list="{{ chk.dots }}" as="d" hint-placeholder-count="8">
+                <div style="flex:1;height:10px;border-radius:5px;background:{{ d.c }};transition:background .2s"></div>
+              </sc-for>
+            </div>
+          </div>
+          <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+            <button onClick="{{ onCheckNext }}" style="height:52px;padding:0 26px;border:none;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">{{ chk.btn }}</button>
+            <div style="font-size:13.5px;color:#5B6573;font-variant-numeric:tabular-nums">{{ chk.hint }}</div>
+          </div>
+        </div>
+        <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:26px 28px;display:flex;flex-direction:column;gap:16px">
+          <div>
+            <div style="font-size:12.5px;font-weight:700;color:#5B6573">과학 원리</div>
+            <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em;margin-top:4px">심장은 스스로 전기 신호를 만들어 뛰어요</div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px">
+            <div style="padding:16px 18px;border-radius:12px;background:#F6F7F9">
+              <div style="font-size:12.5px;font-weight:700;color:oklch(0.52 0.19 25)">01 동방결절</div>
+              <div style="font-size:14px;color:#3A4350;line-height:1.55;margin-top:6px">오른쪽 심방의 동방결절이 1분에 60~100번 전기 신호를 만들어요.</div>
+            </div>
+            <div style="padding:16px 18px;border-radius:12px;background:#F6F7F9">
+              <div style="font-size:12.5px;font-weight:700;color:oklch(0.52 0.19 25)">02 흥분 전도</div>
+              <div style="font-size:14px;color:#3A4350;line-height:1.55;margin-top:6px">신호가 심방 → 방실결절 → 심실로 퍼지며 심장 전체에 전달돼요.</div>
+            </div>
+            <div style="padding:16px 18px;border-radius:12px;background:#F6F7F9">
+              <div style="font-size:12.5px;font-weight:700;color:oklch(0.52 0.19 25)">03 심근 수축</div>
+              <div style="font-size:14px;color:#3A4350;line-height:1.55;margin-top:6px">Na⁺가 들어와 막전위가 바뀌고 Ca²⁺가 들어오면 근육이 수축해요. K⁺가 나가면 원래대로 돌아가요.</div>
+            </div>
+          </div>
+          <div style="font-size:13.5px;color:#5B6573;line-height:1.6;border-top:1px solid #EEF0F3;padding-top:14px;text-wrap:pretty">이 센서는 빛을 비춰 손끝 혈관의 혈류량 변화를 읽는 광혈류측정(PPG) 방식이에요. 심장이 뛸 때마다 혈액이 밀려와 빛이 흡수되는 양이 달라져요.</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ scr.normal }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:32px 36px;display:flex;flex-direction:column;gap:22px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
+            <div style="min-width:0">
+              <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em">STEP 2 · 보통 상태</div>
+              <div style="font-size:30px;font-weight:700;letter-spacing:-0.03em;margin-top:8px">{{ nS.title }}</div>
+              <div style="font-size:16px;color:#5B6573;line-height:1.55;margin-top:8px;text-wrap:pretty">{{ nS.desc }}</div>
+            </div>
+            <sc-if value="{{ nS.run }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:right">
+                <div style="font-size:40px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ nS.remain }}</div>
+                <div style="font-size:12.5px;color:#8A93A0;margin-top:6px">남은 시간</div>
+              </div>
+            </sc-if>
+            <sc-if value="{{ nS.review }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;align-items:baseline;gap:6px">
+                <span style="font-size:14px;color:#5B6573;font-weight:600">평균</span>
+                <span style="font-size:44px;font-weight:700;letter-spacing:-0.035em;font-variant-numeric:tabular-nums;line-height:1">{{ nS.avg }}</span>
+                <span style="font-size:15px;color:#5B6573;font-weight:600">BPM</span>
+              </div>
+            </sc-if>
+          </div>
+          <sc-if value="{{ nS.run }}" hint-placeholder-val="{{ false }}">
+            <div style="height:6px;border-radius:3px;background:#EEF0F3;overflow:hidden"><div style="height:100%;width:{{ nS.prog }};background:#0F1419;transition:width .2s linear"></div></div>
+          </sc-if>
+          <sc-if value="{{ nS.intro }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px">
+              <div style="padding:18px;border-radius:12px;background:#F6F7F9;font-size:15px;font-weight:600;line-height:1.5"><div style="font-size:12.5px;color:#8A93A0;font-weight:700;margin-bottom:6px">01</div>등을 기대고 편안히 앉기</div>
+              <div style="padding:18px;border-radius:12px;background:#F6F7F9;font-size:15px;font-weight:600;line-height:1.5"><div style="font-size:12.5px;color:#8A93A0;font-weight:700;margin-bottom:6px">02</div>센서를 세게 누르지 말고 가볍게 대기</div>
+              <div style="padding:18px;border-radius:12px;background:#F6F7F9;font-size:15px;font-weight:600;line-height:1.5"><div style="font-size:12.5px;color:#8A93A0;font-weight:700;margin-bottom:6px">03</div>말하거나 움직이지 않기</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ nS.showChart }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;justify-content:flex-end;gap:16px;flex-wrap:wrap;font-size:12.5px;color:#3A4350;font-weight:500;margin-bottom:-8px">
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;border-radius:2px;background:oklch(0.62 0.19 25)"></span>{{ legend.hi }}</span>
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;border-radius:2px;background:oklch(0.62 0.19 255)"></span>{{ legend.lo }}</span>
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;border-top:1.5px dashed #3A4350"></span>평균선</span>
+            </div>
+            <dc-import name="BpmChart" c="{{ nC }}" style="display:block;height:280px" hint-size="100%,280px"></dc-import>
+          </sc-if>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <sc-if value="{{ nS.intro }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ onStartNormal }}" style="height:52px;padding:0 26px;border:none;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">{{ startLabel }}</button>
+            </sc-if>
+            <sc-if value="{{ nS.run }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ onStopNormal }}" style="height:52px;padding:0 24px;border:1px solid #D5D9DF;border-radius:12px;background:#FFFFFF;color:#0F1419;font-size:15px;font-weight:600;cursor:pointer" style-hover="background:#F5F6F8">측정 중지</button>
+            </sc-if>
+            <sc-if value="{{ nS.review }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ onGoFocus }}" style="height:52px;padding:0 26px;border:none;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">다음: 집중 상태 측정 →</button>
+              <button onClick="{{ onStartNormal }}" style="height:52px;padding:0 22px;border:1px solid #D5D9DF;border-radius:12px;background:#FFFFFF;color:#0F1419;font-size:15px;font-weight:600;cursor:pointer" style-hover="background:#F5F6F8">다시 측정</button>
+            </sc-if>
+          </div>
+        </div>
+        <sc-if value="{{ nS.review }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:24px 28px;display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:12.5px;font-weight:700;color:#5B6573">과학 원리 · 부교감 신경</div>
+            <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em">편안할 때는 부교감 신경이 심박을 늦춰요</div>
+            <div style="font-size:15px;color:#3A4350;line-height:1.65;text-wrap:pretty">부교감 신경 끝에서 아세틸콜린이 분비되면 동방결절의 전기 신호가 느려져 심박수가 낮고 안정적으로 유지돼요. 숨을 들이쉬고 내쉴 때마다 박동 간격이 조금씩 달라지는데, 이것도 건강한 신호예요.</div>
+            <sc-if value="{{ nS.hasBad }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:13px;color:oklch(0.48 0.11 60);line-height:1.5">{{ nS.badText }}</div>
+            </sc-if>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ scr.focus }}" hint-placeholder-val="{{ false }}">
+        <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:32px 36px;display:flex;flex-direction:column;gap:22px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
+            <div style="min-width:0">
+              <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em">STEP 3 · 집중 상태</div>
+              <div style="font-size:30px;font-weight:700;letter-spacing:-0.03em;margin-top:8px">{{ fS.title }}</div>
+              <div style="font-size:16px;color:#5B6573;line-height:1.55;margin-top:8px;text-wrap:pretty">{{ fS.desc }}</div>
+            </div>
+            <sc-if value="{{ fS.run }}" hint-placeholder-val="{{ false }}">
+              <div style="text-align:right">
+                <div style="font-size:40px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ fS.remain }}</div>
+                <div style="font-size:12.5px;color:#8A93A0;margin-top:6px">남은 시간</div>
+              </div>
+            </sc-if>
+          </div>
+          <sc-if value="{{ fS.run }}" hint-placeholder-val="{{ false }}">
+            <div style="height:6px;border-radius:3px;background:#EEF0F3;overflow:hidden"><div style="height:100%;width:{{ fS.prog }};background:#0F1419;transition:width .2s linear"></div></div>
+          </sc-if>
+
+          <sc-if value="{{ fS.intro }}" hint-placeholder-val="{{ false }}">
+            <div style="padding:22px 24px;border-radius:14px;background:#F6F7F9;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px 32px">
+              <div style="min-width:0">
+                <div style="font-size:13px;color:#5B6573;font-weight:700">집중 과제 · 뺄셈 암산</div>
+                <div style="font-size:30px;font-weight:700;letter-spacing:-0.02em;margin-top:8px;font-variant-numeric:tabular-nums">100 − 7 = 93 → 93 − 7 = …</div>
+              </div>
+              <div style="font-size:14px;color:#3A4350;line-height:1.6;max-width:340px">키보드 숫자를 누르고 Enter, 또는 화면 숫자판으로 답을 입력해요. 틀리면 같은 문제를 다시 풀어요.</div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ fS.run }}" hint-placeholder-val="{{ false }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:20px;align-items:stretch">
+              <div style="padding:22px;border-radius:14px;background:#F6F7F9;display:flex;flex-direction:column;gap:14px">
+                <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:700;color:#5B6573">
+                  <span>100에서 7씩 빼기</span>
+                  <span style="font-variant-numeric:tabular-nums;color:#0F1419">정답 {{ math.correct }}개</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="font-size:44px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;white-space:nowrap">{{ math.q }}</div>
+                  <div style="flex:1;min-width:90px;height:72px;border-radius:12px;border:2px solid {{ math.border }};background:#FFFFFF;display:flex;align-items:center;justify-content:center;font-size:40px;font-weight:700;font-variant-numeric:tabular-nums;color:{{ math.inputColor }};transition:border-color .15s">{{ math.input }}</div>
+                </div>
+                <div style="height:18px;font-size:13.5px;font-weight:700;color:{{ math.fbColor }}">{{ math.fb }}</div>
+                <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px">
+                  <sc-for list="{{ keys }}" as="k" hint-placeholder-count="12">
+                    <button onClick="{{ k.on }}" style="height:52px;border-radius:10px;border:1px solid #E1E4E8;background:{{ k.bg }};color:{{ k.color }};font-size:{{ k.size }};font-weight:700;cursor:pointer;font-variant-numeric:tabular-nums" style-active="transform:scale(0.97)">{{ k.label }}</button>
+                  </sc-for>
+                </div>
+              </div>
+              <dc-import name="BpmChart" c="{{ fC }}" style="display:block;height:100%;min-height:340px" hint-size="100%,340px"></dc-import>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{ fS.review }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;flex-wrap:wrap;align-items:stretch;gap:12px">
+              <div style="flex:1 1 150px;padding:18px 20px;border-radius:12px;background:#F6F7F9">
+                <div style="font-size:13px;color:#5B6573;font-weight:600">보통 상태 평균</div>
+                <div style="display:flex;align-items:baseline;gap:6px;margin-top:6px"><span style="font-size:36px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ sum.n }}</span><span style="font-size:14px;color:#5B6573;font-weight:600">BPM</span></div>
+              </div>
+              <div style="flex:1 1 150px;padding:18px 20px;border-radius:12px;background:#F6F7F9">
+                <div style="font-size:13px;color:#5B6573;font-weight:600">집중 상태 평균</div>
+                <div style="display:flex;align-items:baseline;gap:6px;margin-top:6px"><span style="font-size:36px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ sum.f }}</span><span style="font-size:14px;color:#5B6573;font-weight:600">BPM</span></div>
+              </div>
+              <div style="flex:1 1 170px;padding:18px 20px;border-radius:12px;background:{{ sum.bg }}">
+                <div style="font-size:13px;color:#0F1419;font-weight:700">변화량 <span style="font-weight:500;color:#5B6573">(집중 − 보통)</span></div>
+                <div style="display:flex;align-items:baseline;gap:6px;margin-top:6px;color:{{ sum.color }}"><span style="font-size:15px;font-weight:700">{{ sum.arrow }}</span><span style="font-size:36px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ sum.d }}</span><span style="font-size:14px;font-weight:700">BPM</span></div>
+              </div>
+              <div style="flex:1 1 150px;padding:18px 20px;border-radius:12px;background:#F6F7F9">
+                <div style="font-size:13px;color:#5B6573;font-weight:600">암산 결과</div>
+                <div style="display:flex;align-items:baseline;gap:6px;margin-top:6px"><span style="font-size:36px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ math.correct }}</span><span style="font-size:14px;color:#5B6573;font-weight:600">문제 정답</span></div>
+              </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:20px">
+              <div style="min-width:0">
+                <div style="font-size:14px;font-weight:700;color:#3A4350">보통 상태</div>
+                <dc-import name="BpmChart" c="{{ nC }}" style="display:block;height:230px" hint-size="100%,230px"></dc-import>
+              </div>
+              <div style="min-width:0">
+                <div style="font-size:14px;font-weight:700;color:#3A4350">집중 상태</div>
+                <dc-import name="BpmChart" c="{{ fC }}" style="display:block;height:230px" hint-size="100%,230px"></dc-import>
+              </div>
+            </div>
+          </sc-if>
+
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <sc-if value="{{ fS.intro }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ onStartFocus }}" style="height:52px;padding:0 26px;border:none;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">{{ startLabel }}</button>
+            </sc-if>
+            <sc-if value="{{ fS.run }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ onStopFocus }}" style="height:52px;padding:0 24px;border:1px solid #D5D9DF;border-radius:12px;background:#FFFFFF;color:#0F1419;font-size:15px;font-weight:600;cursor:pointer" style-hover="background:#F5F6F8">측정 중지</button>
+            </sc-if>
+            <sc-if value="{{ fS.review }}" hint-placeholder-val="{{ false }}">
+              <button onClick="{{ onGoGame }}" style="height:52px;padding:0 26px;border:none;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">다음: 거짓말 탐지기 →</button>
+              <button onClick="{{ onStartFocus }}" style="height:52px;padding:0 22px;border:1px solid #D5D9DF;border-radius:12px;background:#FFFFFF;color:#0F1419;font-size:15px;font-weight:600;cursor:pointer" style-hover="background:#F5F6F8">다시 측정</button>
+            </sc-if>
+          </div>
+        </div>
+        <sc-if value="{{ fS.review }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:24px 28px;display:flex;flex-direction:column;gap:10px">
+            <div style="font-size:12.5px;font-weight:700;color:#5B6573">과학 원리 · 교감 신경</div>
+            <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em">집중하면 교감 신경이 심장을 빠르게 뛰게 해요</div>
+            <div style="font-size:15px;color:#3A4350;line-height:1.65;text-wrap:pretty">교감 신경 끝에서 노르에피네프린이 분비되면 동방결절의 Na⁺·Ca²⁺ 통로가 더 빨리 열려 전기 신호가 자주 만들어져요. 그래서 심박수가 올라가고, 박동 간격은 짧고 고르게 변해요.</div>
+            <div style="font-size:15px;color:#0F1419;line-height:1.6;font-weight:600;border-top:1px solid #EEF0F3;padding-top:12px;margin-top:4px;text-wrap:pretty">{{ sum.text }}</div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ scr.game }}" hint-placeholder-val="{{ false }}">
+
+        <sc-if value="{{ gS.setup }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:32px 36px;display:flex;flex-direction:column;gap:22px">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em">STEP 4 · 미니게임</div>
+              <div style="font-size:30px;font-weight:700;letter-spacing:-0.03em;margin-top:8px">거짓말 탐지기 게임</div>
+              <div style="font-size:16px;color:#5B6573;line-height:1.55;margin-top:8px;text-wrap:pretty">질문마다 '예' 또는 '아니오'로 대답하세요. 몇 개는 일부러 거짓말로 대답해요. 어떤 질문인지는 끝날 때까지 비밀이에요!</div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:12px">
+              <div style="padding:18px;border-radius:12px;background:#F6F7F9;font-size:15px;font-weight:600;line-height:1.5"><div style="font-size:12.5px;color:#8A93A0;font-weight:700;margin-bottom:6px">01</div>진행자가 질문을 읽어요</div>
+              <div style="padding:18px;border-radius:12px;background:#F6F7F9;font-size:15px;font-weight:600;line-height:1.5"><div style="font-size:12.5px;color:#8A93A0;font-weight:700;margin-bottom:6px">02</div>소리 내어 대답하고 예/아니오 버튼 누르기</div>
+              <div style="padding:18px;border-radius:12px;background:#F6F7F9;font-size:15px;font-weight:600;line-height:1.5"><div style="font-size:12.5px;color:#8A93A0;font-weight:700;margin-bottom:6px">03</div>심박 변화로 거짓 답을 추측해요</div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+                <div style="font-size:15px;font-weight:700">질문 목록 <span style="font-weight:500;color:#8A93A0;font-size:13px">진행자가 바꿀 수 있어요</span></div>
+                <button onClick="{{ onResetQ }}" style="height:32px;padding:0 12px;border:none;border-radius:8px;background:transparent;color:#5B6573;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:#F3F4F6;color:#0F1419">기본 질문으로</button>
+              </div>
+              <sc-for list="{{ qEdit }}" as="q" hint-placeholder-count="5">
+                <div style="display:flex;align-items:center;gap:12px">
+                  <div style="width:34px;flex:none;font-size:14px;font-weight:700;color:#8A93A0;font-variant-numeric:tabular-nums">Q{{ q.num }}</div>
+                  <input value="{{ q.text }}" onChange="{{ q.on }}" style="flex:1;min-width:0;height:46px;padding:0 14px;border:1px solid #D5D9DF;border-radius:10px;font-size:15px;color:#0F1419;background:#FFFFFF;outline:none" style-focus="border-color:#0F1419">
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              <button onClick="{{ onStartGame }}" style="height:52px;padding:0 26px;border:none;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">게임 시작</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ gS.q }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:32px 36px;display:flex;flex-direction:column;gap:22px">
+            <div style="display:flex;justify-content:space-between;align-items:center;gap:16px">
+              <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em;font-variant-numeric:tabular-nums">STEP 4 · 질문 {{ gq.num }} / {{ gq.total }}</div>
+              <div style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;color:#3A4350">{{ gq.remain }}</div>
+            </div>
+            <div style="height:6px;border-radius:3px;background:#EEF0F3;overflow:hidden;margin-top:-10px"><div style="height:100%;width:{{ gq.prog }};background:#0F1419;transition:width .2s linear"></div></div>
+            <div style="font-size:36px;font-weight:700;letter-spacing:-0.03em;line-height:1.3;text-wrap:balance;min-height:94px">{{ gq.text }}</div>
+            <div style="display:flex;gap:12px">
+              <button onClick="{{ onYes }}" style="flex:1;height:72px;border-radius:14px;border:1.5px solid {{ gq.yesBorder }};background:{{ gq.yesBg }};color:{{ gq.yesColor }};font-size:24px;font-weight:700;cursor:pointer">예</button>
+              <button onClick="{{ onNo }}" style="flex:1;height:72px;border-radius:14px;border:1.5px solid {{ gq.noBorder }};background:{{ gq.noBg }};color:{{ gq.noColor }};font-size:24px;font-weight:700;cursor:pointer">아니오</button>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:14px 18px;border-radius:12px;background:#F6F7F9">
+              <div style="font-size:14px;color:#3A4350;font-variant-numeric:tabular-nums">기준 <b>{{ gq.base }}</b> BPM <span style="color:#B4BAC4;margin:0 6px">→</span> 지금 <b>{{ gq.nowBpm }}</b> BPM</div>
+              <span style="display:inline-flex;align-items:center;height:28px;padding:0 11px;border-radius:999px;font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums;background:{{ gq.dBg }};color:{{ gq.dColor }}">{{ gq.delta }} BPM</span>
+            </div>
+            <dc-import name="BpmChart" c="{{ gC }}" style="display:block;height:200px" hint-size="100%,200px"></dc-import>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+              <sc-if value="{{ gq.canNext }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ onNextQ }}" style="height:52px;padding:0 26px;border:none;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">{{ gq.nextLabel }} →</button>
+              </sc-if>
+              <sc-if value="{{ gq.cantNext }}" hint-placeholder-val="{{ true }}">
+                <div style="height:52px;padding:0 24px;border-radius:12px;background:#EEF0F3;color:#8A93A0;font-size:15px;font-weight:600;display:flex;align-items:center;font-variant-numeric:tabular-nums">{{ gq.waitText }}</div>
+              </sc-if>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ gS.result }}" hint-placeholder-val="{{ false }}">
+          <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:32px 36px;display:flex;flex-direction:column;gap:22px">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em">STEP 4 · 탐지 결과</div>
+              <div style="font-size:30px;font-weight:700;letter-spacing:-0.03em;margin-top:8px">가장 의심되는 답변은 질문 {{ gj.topNum }}이에요</div>
+              <div style="font-size:16px;color:#5B6573;line-height:1.55;margin-top:8px;text-wrap:pretty">{{ gj.desc }}</div>
+            </div>
+            <div style="display:flex;flex-direction:column">
+              <div style="display:grid;grid-template-columns:minmax(0,2.4fr) 64px minmax(110px,1.2fr) minmax(110px,1.2fr) 92px;gap:16px;padding:0 0 10px;font-size:12.5px;font-weight:700;color:#8A93A0">
+                <div>질문</div><div>대답</div><div>심박 상승폭</div><div>거짓말 확률</div><div>판정</div>
+              </div>
+              <sc-for list="{{ gj.rows }}" as="r" hint-placeholder-count="5">
+                <div style="border-top:1px solid #EEF0F3;padding:14px 0;display:flex;flex-direction:column;gap:10px">
+                  <div style="display:grid;grid-template-columns:minmax(0,2.4fr) 64px minmax(110px,1.2fr) minmax(110px,1.2fr) 92px;gap:16px;align-items:center">
+                    <div style="display:flex;gap:10px;min-width:0;font-size:15px;font-weight:600;line-height:1.4"><span style="color:#8A93A0;font-weight:700;flex:none">{{ r.num }}</span><span style="min-width:0">{{ r.text }}</span></div>
+                    <div style="font-size:15px;font-weight:700">{{ r.ans }}</div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <div style="flex:1;height:8px;border-radius:4px;background:#EEF0F3;overflow:hidden"><div style="height:100%;width:{{ r.barW }};background:{{ r.barC }};border-radius:4px"></div></div>
+                      <span style="width:34px;text-align:right;font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums">{{ r.rise }}</span>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px">
+                      <div style="flex:1;height:8px;border-radius:4px;background:#EEF0F3;overflow:hidden"><div style="height:100%;width:{{ r.pW }};background:{{ r.pC }};border-radius:4px"></div></div>
+                      <span style="width:38px;text-align:right;font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums">{{ r.p }}</span>
+                    </div>
+                    <span style="justify-self:start;display:inline-flex;align-items:center;height:28px;padding:0 10px;border-radius:999px;font-size:12.5px;font-weight:700;white-space:nowrap;background:{{ r.vBg }};color:{{ r.vColor }}">{{ r.verdict }}</span>
+                  </div>
+                  <sc-if value="{{ r.showToggle }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;align-items:center;gap:10px;padding-left:44px;flex-wrap:wrap">
+                      <span style="font-size:13px;color:#5B6573;font-weight:600">실제로는?</span>
+                      <div style="display:flex;gap:6px">
+                        <button onClick="{{ r.onTruth }}" style="height:34px;padding:0 14px;border-radius:9px;border:1px solid #D5D9DF;background:{{ r.tBg }};color:{{ r.tColor }};font-size:13.5px;font-weight:700;cursor:pointer">진실</button>
+                        <button onClick="{{ r.onLie }}" style="height:34px;padding:0 14px;border-radius:9px;border:1px solid #D5D9DF;background:{{ r.lBg }};color:{{ r.lColor }};font-size:13.5px;font-weight:700;cursor:pointer">거짓말</button>
+                      </div>
+                      <sc-if value="{{ r.showHit }}" hint-placeholder-val="{{ false }}">
+                        <span style="font-size:13px;font-weight:700;color:{{ r.hitColor }}">{{ r.hitText }}</span>
+                      </sc-if>
+                    </div>
+                  </sc-if>
+                </div>
+              </sc-for>
+            </div>
+
+            <sc-if value="{{ gj.scored }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;gap:16px 32px;padding:22px 24px;border-radius:14px;background:#0F1419;color:#FFFFFF">
+                <div>
+                  <div style="font-size:13px;font-weight:600;color:#B4BAC4">탐지기 적중</div>
+                  <div style="display:flex;align-items:baseline;gap:6px;margin-top:4px"><span style="font-size:44px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ gj.hits }}</span><span style="font-size:18px;font-weight:600;color:#B4BAC4">/ {{ gj.total }}</span></div>
+                </div>
+                <div style="flex:1 1 280px;min-width:0">
+                  <div style="font-size:20px;font-weight:700;letter-spacing:-0.02em">{{ gj.rewardTitle }}</div>
+                  <div style="font-size:15px;color:#D5D9DF;margin-top:4px;line-height:1.5">{{ gj.rewardText }}</div>
+                </div>
+              </div>
+            </sc-if>
+
+            <div style="padding:14px 18px;border-radius:12px;background:#F6F7F9;font-size:13.5px;color:#3A4350;line-height:1.6;text-wrap:pretty"><b>거짓말 탐지기의 한계</b> · 심박수는 거짓말뿐 아니라 긴장, 놀람, 움직임, 호흡에도 변해요. 실제 거짓말 탐지기(폴리그래프)도 이런 한계 때문에 법정에서 증거로 인정되지 않는 경우가 많아요. 재미로만 즐겨 주세요!</div>
+
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+              <sc-if value="{{ gj.judging }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ onReveal }}" style="height:52px;padding:0 26px;border:none;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">정답 공개하기</button>
+              </sc-if>
+              <sc-if value="{{ gj.canScore }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ onScore }}" style="height:52px;padding:0 26px;border:none;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">채점하기</button>
+              </sc-if>
+              <sc-if value="{{ gj.waitScore }}" hint-placeholder-val="{{ false }}">
+                <div style="height:52px;padding:0 24px;border-radius:12px;background:#EEF0F3;color:#8A93A0;font-size:15px;font-weight:600;display:flex;align-items:center">모든 질문의 정답을 골라 주세요</div>
+              </sc-if>
+              <sc-if value="{{ gj.scored }}" hint-placeholder-val="{{ false }}">
+                <button onClick="{{ onGoSummary }}" style="height:52px;padding:0 26px;border:none;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;cursor:pointer" style-hover="background:#2A313C">전체 결과 보기 →</button>
+              </sc-if>
+              <button onClick="{{ onReplayGame }}" style="height:52px;padding:0 22px;border:1px solid #D5D9DF;border-radius:12px;background:#FFFFFF;color:#0F1419;font-size:15px;font-weight:600;cursor:pointer" style-hover="background:#F5F6F8">게임 다시 하기</button>
+            </div>
+          </div>
+        </sc-if>
+      </sc-if>
+
+      <sc-if value="{{ scr.summary }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em">STEP 5 · 결과</div>
+            <div style="font-size:30px;font-weight:700;letter-spacing:-0.03em;margin-top:8px">실습 결과 요약</div>
+          </div>
+          <a href="Heart%20Rate%20Monitor.dc.html" style="display:inline-flex;align-items:center;height:52px;padding:0 26px;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;text-decoration:none" style-hover="background:#2A313C;color:#FFFFFF">다음 참가자 시작</a>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;flex-wrap:wrap;font-size:12.5px;color:#3A4350;font-weight:500">
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;border-radius:2px;background:oklch(0.62 0.19 25)"></span>{{ legend.hi }}</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;border-radius:2px;background:oklch(0.62 0.19 255)"></span>{{ legend.lo }}</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:14px;border-top:1.5px dashed #3A4350"></span>평균선</span>
+          <span style="display:flex;align-items:center;gap:6px"><span style="width:10px;height:10px;border-radius:50%;border:2.5px solid oklch(0.75 0.15 70);background:#FFFFFF"></span>오류 가능성</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:16px">
+          <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:18px 22px 10px;min-width:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <div style="font-size:16px;font-weight:700">보통 상태</div>
+              <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:13px;color:#5B6573;font-weight:600">평균</span><span style="font-size:30px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ sum.n }}</span><span style="font-size:13px;color:#5B6573;font-weight:600">BPM</span></div>
+            </div>
+            <dc-import name="BpmChart" c="{{ nC }}" style="display:block;height:240px" hint-size="100%,240px"></dc-import>
+          </div>
+          <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:18px 22px 10px;min-width:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+              <div style="font-size:16px;font-weight:700">집중 상태</div>
+              <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:13px;color:#5B6573;font-weight:600">평균</span><span style="font-size:30px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ sum.f }}</span><span style="font-size:13px;color:#5B6573;font-weight:600">BPM</span></div>
+            </div>
+            <dc-import name="BpmChart" c="{{ fC }}" style="display:block;height:240px" hint-size="100%,240px"></dc-import>
+          </div>
+        </div>
+
+        <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:18px 22px;display:flex;flex-wrap:wrap;align-items:center;gap:16px 28px">
+          <div style="display:flex;align-items:center;gap:16px;padding:12px 20px;border-radius:12px;background:{{ sum.bg }}">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#0F1419">변화량</div>
+              <div style="font-size:12px;color:#5B6573;margin-top:2px">집중 − 보통</div>
+            </div>
+            <div style="display:flex;align-items:baseline;gap:6px;color:{{ sum.color }}">
+              <span style="font-size:15px;font-weight:700">{{ sum.arrow }}</span>
+              <span style="font-size:40px;font-weight:700;letter-spacing:-0.035em;font-variant-numeric:tabular-nums;line-height:1">{{ sum.d }}</span>
+              <span style="font-size:15px;font-weight:700">BPM</span>
+            </div>
+          </div>
+          <div style="font-size:15px;color:#5B6573;font-weight:600;font-variant-numeric:tabular-nums">{{ sum.formula }}</div>
+          <div style="flex:1 1 300px;min-width:0;display:flex;flex-direction:column;gap:4px">
+            <div style="font-size:14.5px;color:#0F1419;line-height:1.5;text-wrap:pretty">{{ sum.text }}</div>
+            <sc-if value="{{ sum.hasBad }}" hint-placeholder-val="{{ false }}">
+              <div style="font-size:12.5px;color:oklch(0.48 0.11 60);line-height:1.5">{{ sum.badText }}</div>
+            </sc-if>
+          </div>
+        </div>
+
+        <div style="display:flex;flex-wrap:wrap;gap:16px;align-items:stretch">
+          <div style="flex:2 1 520px;min-width:0;background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:18px 22px 16px;display:flex;flex-direction:column;gap:14px">
+            <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px">
+              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+                <div style="font-size:16px;font-weight:700">맥박 RR 간격</div>
+                <span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;border:1px solid #D5D9DF;color:#3A4350;font-size:12px;font-weight:700">참고용 관찰 지표</span>
+              </div>
+              <div style="font-size:12.5px;color:#8A93A0">센서 특성상 실제 값과 차이가 있을 수 있어요</div>
+            </div>
+            <div style="position:relative;height:140px;margin-left:42px">
+              <div style="position:absolute;left:0;top:0;bottom:0;width:50%;background:#F8F9FA;border-radius:8px 0 0 8px"></div>
+              <div style="position:absolute;left:50%;top:0;bottom:0;width:50%;background:#F8F9FA;border-radius:0 8px 8px 0;border-left:1px dashed #D5D9DF"></div>
+              <div style="position:absolute;left:10px;top:8px;font-size:11.5px;font-weight:700;color:#5B6573">보통 상태</div>
+              <div style="position:absolute;left:calc(50% + 10px);top:8px;font-size:11.5px;font-weight:700;color:#5B6573">집중 상태</div>
+              <div style="position:absolute;left:0;right:0;top:21.43%;border-top:1px solid #ECEEF1"></div>
+              <div style="position:absolute;left:0;right:0;top:50%;border-top:1px solid #ECEEF1"></div>
+              <div style="position:absolute;left:0;right:0;top:78.57%;border-top:1px solid #ECEEF1"></div>
+              <div style="position:absolute;left:-42px;width:34px;text-align:right;top:21.43%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">1000</div>
+              <div style="position:absolute;left:-42px;width:34px;text-align:right;top:50%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">800</div>
+              <div style="position:absolute;left:-42px;width:34px;text-align:right;top:78.57%;transform:translateY(-50%);font-size:11px;color:#8A93A0;font-variant-numeric:tabular-nums">600</div>
+              <svg viewBox="0 0 1000 200" preserveAspectRatio="none" style="position:absolute;inset:0;width:100%;height:100%;overflow:visible">
+                <path d="{{ rr.d }}" style="fill:none;stroke:#3A4350;stroke-width:1.75px;stroke-linejoin:round;stroke-linecap:round;vector-effect:non-scaling-stroke"></path>
+              </svg>
+              <sc-for list="{{ rr.anomalies }}" as="a" hint-placeholder-count="0">
+                <div style="position:absolute;left:{{ a.left }};top:{{ a.top }};width:0;height:0">
+                  <div style="position:absolute;left:-5px;top:-5px;width:10px;height:10px;border-radius:50%;background:#FFFFFF;border:2.5px solid oklch(0.75 0.15 70)"></div>
+                  <div style="position:absolute;left:0;top:0;transform:{{ a.tx }};white-space:nowrap;height:20px;display:flex;align-items:center;padding:0 7px;border-radius:6px;background:oklch(0.975 0.035 85);border:1px solid oklch(0.88 0.08 80);font-size:11px;font-weight:700;color:oklch(0.43 0.1 60);font-variant-numeric:tabular-nums">{{ a.label }}</div>
+                </div>
+              </sc-for>
+            </div>
+            <div style="display:grid;grid-template-columns:52px repeat(2,minmax(0,1fr));gap:6px 12px;align-items:baseline;font-variant-numeric:tabular-nums;border-top:1px solid #EEF0F3;padding-top:12px">
+              <div></div>
+              <div style="font-size:12px;color:#8A93A0;font-weight:600">평균 간격</div>
+              <div style="font-size:12px;color:#8A93A0;font-weight:600">변동성 (RMSSD)</div>
+              <sc-for list="{{ rr.rows }}" as="r" hint-placeholder-count="2">
+                <div style="font-size:13px;font-weight:700;color:#3A4350">{{ r.name }}</div>
+                <div style="font-size:19px;font-weight:700;letter-spacing:-0.02em">{{ r.avg }}<span style="font-size:12px;color:#5B6573;font-weight:600;margin-left:3px">ms</span></div>
+                <div style="font-size:19px;font-weight:700;letter-spacing:-0.02em">{{ r.v }}<span style="font-size:12px;color:#5B6573;font-weight:600;margin-left:3px">ms</span></div>
+              </sc-for>
+            </div>
+          </div>
+
+          <div style="flex:1 1 280px;min-width:0;background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:20px 22px;display:flex;flex-direction:column;gap:12px">
+            <div style="font-size:16px;font-weight:700">거짓말 탐지기</div>
+            <div style="display:flex;align-items:baseline;gap:6px"><span style="font-size:13px;color:#5B6573;font-weight:600">적중</span><span style="font-size:44px;font-weight:700;letter-spacing:-0.03em;font-variant-numeric:tabular-nums;line-height:1">{{ gsum.hits }}</span><span style="font-size:16px;color:#5B6573;font-weight:600">{{ gsum.total }}</span></div>
+            <div style="font-size:14px;color:#3A4350;line-height:1.55;text-wrap:pretty">{{ gsum.text }}</div>
+            <sc-if value="{{ gsum.hasReward }}" hint-placeholder-val="{{ false }}">
+              <div style="margin-top:auto;padding:12px 14px;border-radius:10px;background:#F6F7F9;font-size:13.5px;font-weight:600;line-height:1.5">{{ gsum.reward }}</div>
+            </sc-if>
+          </div>
+        </div>
+      </sc-if>
+    </main>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;checkSeconds&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:5,&quot;max&quot;:30,&quot;step&quot;:1,&quot;unit&quot;:&quot;초&quot;,&quot;default&quot;:10,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;실습 시간&quot;},&quot;phaseSeconds&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:10,&quot;max&quot;:60,&quot;step&quot;:5,&quot;unit&quot;:&quot;초&quot;,&quot;default&quot;:35,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;실습 시간&quot;},&quot;gameSeconds&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:5,&quot;max&quot;:20,&quot;step&quot;:1,&quot;unit&quot;:&quot;초&quot;,&quot;default&quot;:8,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;실습 시간&quot;},&quot;rounds&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:3,&quot;max&quot;:10,&quot;step&quot;:1,&quot;unit&quot;:&quot;개&quot;,&quot;default&quot;:5,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;게임&quot;},&quot;colorMode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;평균 기준&quot;,&quot;변화 방향&quot;],&quot;default&quot;:&quot;변화 방향&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;그래프&quot;},&quot;anomalyThreshold&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;min&quot;:15,&quot;max&quot;:60,&quot;step&quot;:5,&quot;unit&quot;:&quot;BPM&quot;,&quot;default&quot;:45,&quot;tsType&quot;:&quot;number&quot;,&quot;section&quot;:&quot;그래프&quot;}}">
+const RED = 'oklch(0.62 0.19 25)', BLUE = 'oklch(0.62 0.19 255)';
+const RED_T = 'oklch(0.965 0.02 25)', BLUE_T = 'oklch(0.965 0.02 255)';
+const GREEN = 'oklch(0.66 0.15 155)', GREEN_D = 'oklch(0.47 0.13 155)', AMBER_D = 'oklch(0.5 0.12 65)';
+const PROF = {
+  normal: u => 72 + 2.6 * Math.sin(u * 0.55) + 1.5 * Math.sin(u * 1.7 + 1),
+  focus: u => 78.5 + 15 * Math.exp(-(((u - 6) / 3.6) ** 2)) + 2.4 * Math.sin(u * 0.9 + 0.5) - 7 * Math.exp(-(((u - 24) / 3.2) ** 2)) + 3 * Math.exp(-(((u - 14) / 2.5) ** 2))
+};
+const HRV = { normal: { amp: 38, noise: 12 }, focus: { amp: 14, noise: 6 } };
+const mean = a => a.reduce((s, v) => s + v, 0) / a.length;
+const median = a => { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y), m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const fmt = s => { s = Math.max(0, Math.round(s)); return String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0'); };
+const P2 = n => n.toFixed(2) + '%';
+const f1 = n => n.toFixed(1);
+const signed = d => (d > 0 ? '+' : d < 0 ? '−' : '±') + Math.abs(d);
+function chipTx(l, t) { const x = l > 68 ? 'calc(-100% - 12px)' : '12px'; const y = t < 12 ? '-15%' : t > 88 ? '-85%' : '-50%'; return `translate(${x}, ${y})`; }
+
+const DEFAULT_Q = [
+  '오늘 아침밥을 먹었나요?',
+  '지금 주머니에 휴대폰이 있나요?',
+  '이번 모의고사를 잘 봤다고 생각하나요?',
+  '좋아하는 사람이 있나요?',
+  '오늘 학교에 지각했나요?',
+  '어제 숙제를 다 했나요?',
+  '형제나 자매가 있나요?',
+  '이 부스가 재미있나요?',
+  '지난 주말에 게임을 했나요?',
+  '오늘 선생님께 혼난 적이 있나요?'
+];
+const STEPS = [['check', '심박 확인'], ['normal', '보통 상태'], ['focus', '집중 상태'], ['game', '거짓말 탐지기'], ['summary', '결과']];
+const freshMath = () => ({ cur: 100, input: '', correct: 0, wrong: 0, flash: null, flashAt: 0 });
+const freshFlow = () => ({ screen: 'home', nsub: 'intro', fsub: 'intro', gsub: 'setup', data: { normal: [], focus: [] }, dur: { normal: 35, focus: 35 }, phaseStart: 0, check: { start: 0, stable: 0, doneAt: 0 }, math: freshMath(), game: null });
+
+function analyze(beats, thr) {
+  const out = [], vb = [];
+  for (const b of beats) {
+    const recent = vb.slice(-5);
+    let bad = b.bpm > 180 || b.bpm < 40;
+    if (!bad && recent.length >= 3 && Math.abs(b.bpm - median(recent)) > thr) bad = true;
+    let s = null;
+    if (!bad) { vb.push(b.bpm); s = mean(vb.slice(-3)); }
+    out.push({ ...b, bad, s });
+  }
+  const valid = out.filter(b => !b.bad);
+  const avg = valid.length ? mean(valid.map(b => b.bpm)) : null;
+  const rrAvg = valid.length ? mean(valid.map(b => b.rr)) : null;
+  let sq = 0, n = 0;
+  for (let i = 1; i < out.length; i++) if (!out[i].bad && !out[i - 1].bad) { const d = out[i].rr - out[i - 1].rr; sq += d * d; n++; }
+  const events = []; let lastEv = -1e9;
+  for (let i = 0; i < valid.length; i++) {
+    const b = valid[i]; let j = i;
+    while (j > 0 && valid[j - 1].t >= b.t - 5) j--;
+    const a = valid[j];
+    if (b.t - a.t < 3) continue;
+    const d = b.s - a.s;
+    if (Math.abs(d) >= 10 && b.t - lastEv > 8) { events.push({ t0: a.t, t1: b.t, d }); lastEv = b.t; }
+  }
+  return { beats: out, valid, avg, rrAvg, rmssd: n ? Math.sqrt(sq / n) : null, bad: out.filter(b => b.bad), events };
+}
+
+function bpmChart(A, D, mode, live, refOv, refLabel) {
+  const W = 1000, H = 300, lo = 50, hi = 130;
+  const X = t => Math.max(0, Math.min(W, t / D * W));
+  const Y = v => H - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * H;
+  const pts = A.valid.map(b => ({ x: X(b.t), y: Y(b.s), v: b.s }));
+  const ref = refOv ?? A.avg ?? 0;
+  let hp = '', lp = '', lh = null, ll = null;
+  const add = (up, a, b) => {
+    if (up) { if (lh !== a) hp += `M${f1(a.x)} ${f1(a.y)}`; hp += `L${f1(b.x)} ${f1(b.y)}`; lh = b; }
+    else { if (ll !== a) lp += `M${f1(a.x)} ${f1(a.y)}`; lp += `L${f1(b.x)} ${f1(b.y)}`; ll = b; }
+  };
+  for (let i = 1; i < pts.length; i++) {
+    const p = pts[i - 1], q = pts[i];
+    if (mode === 'trend') { add(q.v >= p.v, p, q); continue; }
+    const sp = p.v >= ref, sq = q.v >= ref;
+    if (sp === sq) add(sp, p, q);
+    else { const k = (ref - p.v) / (q.v - p.v); const c = { x: p.x + (q.x - p.x) * k, y: Y(ref), v: ref }; add(sp, p, c); add(sq, c, q); }
+  }
+  const last = pts[pts.length - 1], prev = pts[pts.length - 2];
+  const headUp = last ? (mode === 'trend' ? (prev ? last.v >= prev.v : true) : last.v >= ref) : true;
+  const step = D <= 10 ? 2 : D <= 20 ? 5 : D <= 40 ? 10 : 15, ticks = [];
+  for (let s = 0; s <= D + 0.001; s += step) ticks.push({ left: P2(X(s) / W * 100), label: s === 0 ? '0' : s + '초' });
+  return {
+    hi: hp, lo: lp,
+    hasAvg: refOv != null || A.valid.length >= 3,
+    avgTop: P2(Y(ref) / H * 100),
+    avgLabel: refLabel || `평균 ${Math.round(ref)}`,
+    head: live && last ? { show: true, left: P2(last.x / W * 100), top: P2(last.y / H * 100), color: headUp ? RED : BLUE } : { show: false },
+    anomalies: A.bad.map(b => { const l = X(b.t) / W * 100, t = Y(b.bpm) / H * 100; return { left: P2(l), top: P2(t), label: Math.round(b.bpm) + ' BPM', tx: chipTx(l, t) }; }),
+    bands: A.events.map(e => ({ left: P2(X(e.t0) / W * 100), width: P2((X(e.t1) - X(e.t0)) / W * 100), bg: e.d > 0 ? 'oklch(0.62 0.19 25 / 0.07)' : 'oklch(0.62 0.19 255 / 0.07)', color: e.d > 0 ? 'oklch(0.5 0.17 25)' : 'oklch(0.5 0.17 255)' })),
+    ticks,
+    empty: { show: A.valid.length < 2, text: live ? '신호 수집 중…' : '측정 전' }
+  };
+}
+
+function rrChart(N, F, Dn, Df) {
+  const W = 1000, H = 200, lo = 450, hi = 1150;
+  const Y = v => H - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo) * H;
+  let d = ''; const anomalies = [];
+  [[N, Dn, 0], [F, Df, 500]].forEach(([A, D, x0]) => {
+    let first = true;
+    A.beats.forEach(b => {
+      const x = x0 + Math.max(0, Math.min(500, b.t / D * 500)), y = Y(b.rr);
+      if (b.bad) { const l = x / W * 100, t = y / H * 100; anomalies.push({ left: P2(l), top: P2(t), label: Math.round(b.rr) + ' ms', tx: chipTx(l, t) }); return; }
+      d += (first ? 'M' : 'L') + f1(x) + ' ' + f1(y); first = false;
+    });
+  });
+  const row = (name, A) => ({ name, avg: A.valid.length >= 3 ? String(Math.round(A.rrAvg)) : '—', v: A.valid.length >= 3 && A.rmssd != null ? String(Math.round(A.rmssd)) : '—' });
+  return { d, anomalies, rows: [row('보통', N), row('집중', F)] };
+}
+
+function makeHeart3D(THREE) {
+const V = (x, y, z) => new THREE.Vector3(x, y, z);
+const bumps = (x, y, z) => 0.012 * Math.sin(7.1 * x + 1.3) * Math.sin(6.3 * y + 0.4) * Math.sin(8.2 * z + 2.1)
+  + 0.006 * Math.sin(15 * x + 3) * Math.sin(13 * y + 1) * Math.sin(14 * z);
+const gx = y => 0.06 - 0.16 * y; // anterior interventricular groove
+const TILT = 0.42, OFF_X = 0.2, PIVOT = V(-0.15, 0.78, 0), CY = 0.95;
+
+function vDeform(x, y, z, out = 1) {
+  let r = 1 + bumps(x, y, z);
+  if (z > 0) r *= 1 - 0.06 * Math.exp(-(((x - gx(y)) / 0.1) ** 2)) * Math.min(1, z * 2.5);
+  const k = y < 0 ? 1 + 0.36 * y - 0.08 * y * y : 1 + 0.05 * y;
+  const X = x * k * r * (x < 0 ? 1.07 : 1) * out, Y = y * 1.1 * r * out, Z = z * k * r * 0.84 * out;
+  const c = Math.cos(TILT), s = Math.sin(TILT);
+  return V(X * c - Y * s + OFF_X, X * s + Y * c, Z);
+}
+
+function smoothNormals(geo) {
+  geo.computeVertexNormals();
+  const p = geo.attributes.position, n = geo.attributes.normal, map = new Map();
+  for (let i = 0; i < p.count; i++) {
+    const k = p.getX(i).toFixed(4) + ',' + p.getY(i).toFixed(4) + ',' + p.getZ(i).toFixed(4);
+    if (!map.has(k)) map.set(k, []);
+    map.get(k).push(i);
+  }
+  const t = new THREE.Vector3();
+  map.forEach(ids => {
+    if (ids.length < 2) return;
+    t.set(0, 0, 0);
+    ids.forEach(i => { t.x += n.getX(i); t.y += n.getY(i); t.z += n.getZ(i); });
+    t.normalize();
+    ids.forEach(i => n.setXYZ(i, t.x, t.y, t.z));
+  });
+  n.needsUpdate = true;
+}
+
+function blob(sx, sy, sz, seed, amp = 0.03) {
+  const g = new THREE.SphereGeometry(1, 64, 48), a = g.attributes.position;
+  for (let i = 0; i < a.count; i++) {
+    const x = a.getX(i), y = a.getY(i), z = a.getZ(i);
+    const r = 1 + amp * Math.sin(5 * x + seed) * Math.sin(4 * y + seed * 2) * Math.sin(6 * z + seed * 0.5) + bumps(x, y, z);
+    a.setXYZ(i, x * r * sx, y * r * sy, z * r * sz);
+  }
+  smoothNormals(g);
+  return g;
+}
+
+function mountHeartInner(el) {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.setClearColor(0x000000, 0);
+  const cv = renderer.domElement;
+  Object.assign(cv.style, { width: '100%', height: '100%', display: 'block', cursor: 'grab', touchAction: 'none' });
+  el.appendChild(cv);
+
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera(28, 1, 0.1, 100);
+  scene.add(new THREE.HemisphereLight(0xfff4f2, 0x40202a, 1.1));
+  const key = new THREE.DirectionalLight(0xffffff, 2.6); key.position.set(3, 5, 6); scene.add(key);
+  const rim = new THREE.DirectionalLight(0xffd6d0, 1.8); rim.position.set(-4, 2, -5); scene.add(rim);
+  const fill = new THREE.DirectionalLight(0xdfe8ff, 0.7); fill.position.set(-5, -1, 3); scene.add(fill);
+
+  const root = new THREE.Group(); root.position.y = CY; scene.add(root);
+  const model = new THREE.Group(); model.position.y = -CY; root.add(model);
+
+  // ventricles
+  const muscle = new THREE.MeshPhysicalMaterial({ color: 0xb02a33, roughness: 0.38, clearcoat: 0.8, clearcoatRoughness: 0.22, sheen: 0.5, sheenColor: new THREE.Color(0xff9a9a), sheenRoughness: 0.5 });
+  const atriumMat = muscle.clone(); atriumMat.color.set(0x8f2232);
+  const vg = new THREE.SphereGeometry(1, 112, 84), pa = vg.attributes.position;
+  for (let i = 0; i < pa.count; i++) {
+    const q = vDeform(pa.getX(i), pa.getY(i), pa.getZ(i)).sub(PIVOT);
+    pa.setXYZ(i, q.x, q.y, q.z);
+  }
+  smoothNormals(vg);
+  const vent = new THREE.Mesh(vg, muscle);
+  vent.position.copy(PIVOT);
+  model.add(vent);
+
+  // atria + auricles
+  const atria = [];
+  const addAtrium = (g, p, rz, mat) => { const m = new THREE.Mesh(g, mat); m.position.set(...p); m.rotation.z = rz; model.add(m); atria.push(m); };
+  addAtrium(blob(0.5, 0.45, 0.48, 1.2), [-0.85, 0.95, 0.0], 0, atriumMat);
+  addAtrium(blob(0.5, 0.38, 0.4, 2.7), [0.35, 1.05, -0.5], 0, atriumMat);
+  addAtrium(blob(0.28, 0.17, 0.16, 0.6, 0.08), [-0.58, 1.15, 0.42], 0.5, atriumMat);
+  addAtrium(blob(0.25, 0.14, 0.15, 3.3, 0.08), [0.74, 1.0, 0.36], -0.6, atriumMat);
+
+  // coronary vessels on the ventricle surface
+  const corA = new THREE.MeshPhysicalMaterial({ color: 0xd8333a, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.15 });
+  const corV = new THREE.MeshPhysicalMaterial({ color: 0x4a62c9, roughness: 0.3, clearcoat: 1, clearcoatRoughness: 0.15 });
+  const onV = (x, y, z, out) => { const l = Math.hypot(x, y, z); return vDeform(x / l, y / l, z / l, out).sub(PIVOT); };
+  const surf = (pts, R, mat) => vent.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, false, 'centripetal'), 72, R, 8, false), mat));
+  const sz = (x, y) => Math.sqrt(Math.max(0.01, 1 - x * x - y * y));
+  let pts = [];
+  for (let y = 0.74; y >= -0.9; y -= 0.06) pts.push(onV(gx(y), y, sz(gx(y), y), 1.012));
+  surf(pts, 0.03, corA);
+  pts = []; for (let y = 0.68; y >= -0.7; y -= 0.07) { const x = gx(y) + 0.075; pts.push(onV(x, y, sz(x, y), 1.016)); }
+  surf(pts, 0.022, corV);
+  pts = []; for (let a = 0.1; a <= 2.5; a += 0.1) { const y = 0.6 - 0.05 * a, r = Math.sqrt(1 - y * y); pts.push(onV(-Math.sin(a) * r, y, Math.cos(a) * r, 1.015)); }
+  surf(pts, 0.032, corA);
+  pts = []; for (let a = -0.15; a >= -2.3; a -= 0.1) { const y = 0.64 + 0.03 * a, r = Math.sqrt(1 - y * y); pts.push(onV(-Math.sin(a) * r, y, Math.cos(a) * r, 1.015)); }
+  surf(pts, 0.028, corA);
+  [[0.35, 0.5, 0.42], [0.0, 0.42, 0.4]].forEach(([y0, dx, dy]) => {
+    pts = []; for (let t = 0; t <= 1.001; t += 0.1) { const x = gx(y0) + dx * t, y = y0 - dy * t; pts.push(onV(x, y, sz(x, y), 1.014)); }
+    surf(pts, 0.021, corA);
+  });
+  pts = []; for (let t = 0; t <= 1.001; t += 0.1) { const a = 1.0 + 0.2 * t, y = 0.55 - 0.8 * t, r = Math.sqrt(Math.max(0.05, 1 - y * y)); pts.push(onV(-Math.sin(a) * r, y, Math.cos(a) * r, 1.014)); }
+  surf(pts, 0.022, corA);
+
+  // great vessels (u = 0 at the heart; dir +1 = away from heart)
+  const wall = c => new THREE.MeshPhysicalMaterial({ color: c, roughness: 0.2, clearcoat: 1, clearcoatRoughness: 0.1, transparent: true, opacity: 0.38, depthWrite: false, side: THREE.DoubleSide, vertexColors: true });
+  const wallRed = wall(0xe0484c), wallBlue = wall(0x5a7be0);
+  const vessels = [];
+  const RS = 20;
+  const vessel = (p, R, oxy, dir) => {
+    const curve = new THREE.CatmullRomCurve3(p.map(q => V(...q)), false, 'centripetal');
+    const len = curve.getLength(), segs = Math.max(24, Math.round(len * 28));
+    const geo = new THREE.TubeGeometry(curve, segs, R, RS, false);
+    const col = new Float32Array(geo.attributes.position.count * 4);
+    for (let i = 0; i <= segs; i++) {
+      const u = i / segs, al = u > 0.78 ? Math.max(0, 1 - (u - 0.78) / 0.22) : 1;
+      for (let j = 0; j <= RS; j++) { const k = (i * (RS + 1) + j) * 4; col[k] = col[k + 1] = col[k + 2] = 1; col[k + 3] = al; }
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(col, 4));
+    const m = new THREE.Mesh(geo, oxy ? wallRed : wallBlue);
+    m.renderOrder = 2;
+    model.add(m);
+    vessels.push({ curve, geo, segs, R, oxy, dir, len });
+  };
+  // aorta + arch branches
+  vessel([[-0.02, 0.5, -0.02], [-0.05, 1.2, 0.05], [0.0, 1.85, 0.0], [0.2, 2.25, -0.2], [0.55, 2.25, -0.45], [0.78, 1.9, -0.6], [0.82, 1.2, -0.72], [0.8, 0.2, -0.78], [0.78, -0.8, -0.75]], 0.24, true, 1);
+  vessel([[0.12, 2.12, -0.12], [0.0, 2.55, -0.12], [-0.12, 3.0, -0.1]], 0.1, true, 1);
+  vessel([[0.36, 2.26, -0.3], [0.38, 2.65, -0.3], [0.4, 3.05, -0.3]], 0.075, true, 1);
+  vessel([[0.58, 2.18, -0.46], [0.72, 2.6, -0.5], [0.95, 2.95, -0.5]], 0.085, true, 1);
+  // pulmonary trunk + arteries (deoxygenated, away from heart)
+  vessel([[-0.3, 0.55, 0.45], [-0.22, 1.15, 0.58], [0.02, 1.6, 0.52], [0.28, 1.82, 0.25]], 0.2, false, 1);
+  vessel([[0.28, 1.82, 0.25], [0.7, 1.9, -0.05], [1.2, 1.82, -0.2], [1.6, 1.7, -0.25]], 0.13, false, 1);
+  vessel([[0.28, 1.82, 0.25], [-0.1, 1.78, -0.3], [-0.7, 1.72, -0.42], [-1.45, 1.62, -0.44]], 0.13, false, 1);
+  // venae cavae (into right atrium)
+  vessel([[-0.82, 1.2, -0.02], [-0.78, 2.0, -0.08], [-0.76, 2.8, -0.1]], 0.17, false, -1);
+  vessel([[-0.8, 0.62, -0.18], [-0.72, 0.0, -0.35], [-0.68, -0.9, -0.45]], 0.17, false, -1);
+  // pulmonary veins (oxygenated, into left atrium)
+  vessel([[0.6, 1.15, -0.55], [1.0, 1.25, -0.6], [1.4, 1.3, -0.62]], 0.085, true, -1);
+  vessel([[0.6, 0.92, -0.6], [1.0, 0.85, -0.65], [1.36, 0.8, -0.66]], 0.085, true, -1);
+  vessel([[0.1, 1.12, -0.75], [-0.25, 1.2, -0.95], [-0.55, 1.25, -1.05]], 0.08, true, -1);
+  vessel([[0.1, 0.92, -0.78], [-0.25, 0.85, -0.98], [-0.52, 0.8, -1.08]], 0.08, true, -1);
+
+  // blood cells
+  const cellGeo = new THREE.SphereGeometry(1, 10, 8);
+  const cellMat = c => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.35, roughness: 0.45 });
+  const cells = { red: [], blue: [] };
+  vessels.forEach(vs => {
+    const n = Math.max(8, Math.min(80, Math.round(vs.len * 26 * Math.min(1.3, vs.R / 0.18))));
+    for (let k = 0; k < n; k++) cells[vs.oxy ? 'red' : 'blue'].push({
+      vs, u: Math.random(), a: Math.random() * Math.PI * 2, d: Math.sqrt(Math.random()) * 0.58 * vs.R,
+      s: Math.min(0.06, vs.R * 0.36) * (0.8 + Math.random() * 0.4), sp: 0.85 + Math.random() * 0.3,
+      rot: new THREE.Euler(Math.random() * 6, Math.random() * 6, 0), spin: (Math.random() - 0.5) * 2
+    });
+  });
+  const meshRed = new THREE.InstancedMesh(cellGeo, cellMat(0xff2e36), cells.red.length);
+  const meshBlue = new THREE.InstancedMesh(cellGeo, cellMat(0x3b55e0), cells.blue.length);
+  meshRed.renderOrder = meshBlue.renderOrder = 1;
+  model.add(meshRed, meshBlue);
+
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), pos = new THREE.Vector3(), sc = new THREE.Vector3();
+  const updCells = (list, mesh, dt, fArt, fVen) => {
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i], vs = c.vs, f = vs.dir > 0 ? fArt : fVen;
+      c.u = (((c.u + vs.dir * f * c.sp * dt / vs.len) % 1) + 1) % 1;
+      const idx = Math.round(c.u * vs.segs);
+      vs.curve.getPointAt(c.u, pos);
+      pos.addScaledVector(vs.geo.normals[idx], Math.cos(c.a) * c.d).addScaledVector(vs.geo.binormals[idx], Math.sin(c.a) * c.d);
+      c.rot.x += c.spin * dt;
+      q.setFromEuler(c.rot);
+      const s = c.s * (c.u > 0.8 ? Math.max(0, 1 - (c.u - 0.8) / 0.2) : 1);
+      sc.set(s, s * 0.5, s);
+      m4.compose(pos, q, sc);
+      mesh.setMatrixAt(i, m4);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+  };
+
+  // interaction
+  let yaw = 0, pitch = 0, drag = null;
+  cv.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, yaw, pitch }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; });
+  cv.addEventListener('pointermove', e => { if (!drag) return; yaw = drag.yaw + (e.clientX - drag.x) * 0.012; pitch = Math.max(-0.5, Math.min(0.5, drag.pitch + (e.clientY - drag.y) * 0.008)); });
+  const up = () => { drag = null; cv.style.cursor = 'grab'; };
+  cv.addEventListener('pointerup', up);
+  cv.addEventListener('pointercancel', up);
+
+  const ro = new ResizeObserver(() => {
+    const w = el.clientWidth, h = el.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    const t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2));
+    const d = Math.max(2.2 / t, 1.65 / (t * camera.aspect)) * 1.04;
+    camera.position.set(0, CY, d);
+    camera.lookAt(0, CY, 0);
+    camera.updateProjectionMatrix();
+  });
+  ro.observe(el);
+
+  let lastBeat = -10, last = performance.now() / 1000, raf = 0;
+  const ease = x => x * x * (3 - 2 * x);
+  const frame = () => {
+    const now = performance.now() / 1000, dt = Math.min(0.05, now - last), tb = now - lastBeat;
+    last = now;
+    const a = Math.exp(-(((tb - 0.05) / 0.045) ** 2));
+    const c = tb < 0.05 ? 0 : tb < 0.17 ? ease((tb - 0.05) / 0.12) : tb < 0.46 ? 1 - ease((tb - 0.17) / 0.29) : 0;
+    vent.scale.set(1 - 0.09 * c, 1 - 0.05 * c, 1 - 0.09 * c);
+    vent.rotation.y = 0.05 * c;
+    atria.forEach(m => m.scale.setScalar(1 - 0.1 * a));
+    const surge = tb < 0.06 ? tb / 0.06 : Math.exp(-(tb - 0.06) / 0.2);
+    updCells(cells.red, meshRed, dt, 0.35 + 2.4 * surge, 0.45 + 0.35 * Math.exp(-tb / 0.5));
+    updCells(cells.blue, meshBlue, dt, 0.35 + 2.4 * surge, 0.45 + 0.35 * Math.exp(-tb / 0.5));
+    root.rotation.set(0.06 + pitch, yaw + (drag ? 0 : 0) + 0.45 * Math.sin(now * 0.32), 0);
+    renderer.render(scene, camera);
+    raf = requestAnimationFrame(frame);
+  };
+  raf = requestAnimationFrame(frame);
+
+  return {
+    beat() { lastBeat = performance.now() / 1000; },
+    dispose() {
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      renderer.dispose();
+      cv.remove();
+    }
+  };
+}
+return mountHeartInner;
+}
+
+class Component extends DCLogic {
+  heartRef = React.createRef();
+  heart3dRef = React.createRef();
+  canvasRef = React.createRef();
+  beatTimes = [];
+  liveVals = [];
+  t0 = performance.now();
+  state = { ...freshFlow(), qText: DEFAULT_Q.slice(), now: performance.now(), live: { bpm: 72, rr: 833, trend: 0 }, lastBadAt: -1e9 };
+
+  componentDidMount() {
+    if (window.location.hash === '#start') this.goStep('check');
+    this.nextBeat();
+    this.rafId = requestAnimationFrame(this.draw);
+    this.tick = setInterval(this.onTick, 200);
+    this.onKeyDown = e => {
+      const st = this.state;
+      if (st.screen !== 'focus' || st.fsub !== 'run') return;
+      if (e.target && /INPUT|TEXTAREA/.test(e.target.tagName)) return;
+      if (/^[0-9]$/.test(e.key)) this.mathKey(e.key);
+      else if (e.key === 'Backspace') { e.preventDefault(); this.mathKey('del'); }
+      else if (e.key === 'Enter') { e.preventDefault(); this.mathKey('ok'); }
+    };
+    window.addEventListener('keydown', this.onKeyDown);
+    this.tryHeart(0);
+  }
+  componentWillUnmount() {
+    this.unmounted = true; clearTimeout(this.heartTimer);
+    clearTimeout(this.beatTimer); clearInterval(this.tick); cancelAnimationFrame(this.rafId);
+    window.removeEventListener('keydown', this.onKeyDown);
+    if (this.h3d) this.h3d.dispose();
+  }
+
+  tryHeart(n) {
+    if (this.unmounted || this.h3d) return;
+    const el = this.heart3dRef.current;
+    if (!window.THREE || !el) { if (n < 120) this.heartTimer = setTimeout(() => this.tryHeart(n + 1), 150); return; }
+    try { this.h3d = makeHeart3D(window.THREE)(el); if (this.heartRef.current) this.heartRef.current.style.display = 'none'; }
+    catch (e) { console.warn('3D heart unavailable', e); }
+  }
+
+  gD() { return this.props.gameSeconds ?? 8; }
+  isRun(s) { return (s.screen === 'normal' && s.nsub === 'run') || (s.screen === 'focus' && s.fsub === 'run'); }
+
+  nextBeat = () => {
+    const st = this.state, now = performance.now();
+    let tgt, h = HRV.normal;
+    if (st.screen === 'normal' && st.nsub === 'run') tgt = PROF.normal((now - st.phaseStart) / 1000 / st.dur.normal * 30);
+    else if (st.screen === 'focus' && st.fsub === 'run') { tgt = PROF.focus((now - st.phaseStart) / 1000 / st.dur.focus * 30); h = HRV.focus; }
+    else if (st.screen === 'game' && st.gsub === 'q' && st.game) { const t = (now - st.game.qStart) / 1000; tgt = 74 + st.game.stress[st.game.i] * Math.exp(-(((t - 3.2) / 2.2) ** 2)) + 1.2 * Math.sin(t * 1.3); h = HRV.focus; }
+    else tgt = PROF.normal(((now - this.t0) / 1000) % 30);
+    let rr = 60000 / tgt + h.amp * Math.sin(2 * Math.PI * now / 4200) + h.noise * (Math.random() * 2 - 1);
+    if (st.screen === 'check' && !st.check.doneAt && now - st.check.start < 2600) rr *= 1 + (Math.random() - 0.5) * 0.55;
+    if (this.isRun(st) && this.pendingArt && (now - st.phaseStart) / 1000 >= this.pendingArt.t) { rr = this.pendingArt.kind === 'spike' ? 316 : rr * 2; this.pendingArt = null; }
+    this.beatTimer = setTimeout(() => { this.onBeat(rr); this.nextBeat(); }, rr);
+  };
+
+  onBeat = (rr) => {
+    const now = performance.now(), bpm = 60000 / rr, thr = this.props.anomalyThreshold ?? 45;
+    const recent = this.liveVals.slice(-5);
+    const bad = bpm > 180 || bpm < 40 || (recent.length >= 3 && Math.abs(bpm - median(recent)) > thr);
+    this.beatTimes.push({ t: now / 1000, bpm, bad });
+    this.beatTimes = this.beatTimes.filter(b => now / 1000 - b.t < 8);
+    if (!bad) { this.liveVals.push(bpm); if (this.liveVals.length > 12) this.liveVals.shift(); this.pump(rr); }
+    const lv = this.liveVals, l3 = lv.slice(-3), p3 = lv.slice(-6, -3);
+    const gD = this.gD();
+    this.setState(s => {
+      const upd = { live: bad || !l3.length ? s.live : { bpm: Math.round(mean(l3)), rr: Math.round(rr), trend: p3.length === 3 ? mean(l3) - mean(p3) : 0 }, lastBadAt: bad ? now : s.lastBadAt };
+      if (this.isRun(s)) { const k = s.screen, t = (now - s.phaseStart) / 1000; if (t <= s.dur[k]) upd.data = { ...s.data, [k]: [...s.data[k], { t, rr, bpm }] }; }
+      if (s.screen === 'game' && s.gsub === 'q' && s.game) {
+        const g = s.game, t = (now - g.qStart) / 1000;
+        if (t <= gD) { const beats = g.beats.slice(); beats[g.i] = [...beats[g.i], { t, rr, bpm }]; upd.game = { ...g, beats }; }
+      }
+      if (s.screen === 'check' && !s.check.doneAt) {
+        const ok = !bad && now - s.check.start > 2600 && (recent.length < 3 || Math.abs(bpm - median(recent)) < 10);
+        upd.check = { ...s.check, stable: ok ? s.check.stable + 1 : 0 };
+      }
+      return upd;
+    });
+  };
+
+  onTick = () => {
+    const cs = this.props.checkSeconds ?? 10;
+    this.setState(s => {
+      const now = performance.now(), upd = { now };
+      if (s.screen === 'normal' && s.nsub === 'run' && (now - s.phaseStart) / 1000 >= s.dur.normal) upd.nsub = 'review';
+      if (s.screen === 'focus' && s.fsub === 'run' && (now - s.phaseStart) / 1000 >= s.dur.focus) upd.fsub = 'review';
+      if (s.screen === 'check') {
+        if (!s.check.doneAt && s.check.stable >= 8 && (now - s.check.start) / 1000 >= cs) upd.check = { ...s.check, doneAt: now };
+        else if (s.check.doneAt && now - s.check.doneAt >= 3000) upd.screen = 'normal';
+      }
+      return upd;
+    });
+  };
+
+  pump(rr) {
+    if (this.h3d) { this.h3d.beat(rr); return; }
+    const h = this.heartRef.current, d = Math.max(260, Math.min(560, rr * 0.62));
+    if (h && h.animate) h.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.17)', offset: 0.14 }, { transform: 'scale(0.97)', offset: 0.34 }, { transform: 'scale(1.07)', offset: 0.5 }, { transform: 'scale(1)' }], { duration: d, easing: 'ease-out' });
+  }
+
+  draw = () => {
+    const c = this.canvasRef.current;
+    if (c && c.clientWidth > 0) {
+      const dpr = window.devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+      if (c.width !== Math.round(w * dpr) || c.height !== Math.round(h * dpr)) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+      const ctx = c.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const now = performance.now() / 1000, win = 6, bt = this.beatTimes, top = 24, bot = h - 8;
+      const X = t => w - (now - t) / win * w, Yv = v => bot - Math.min(1.15, v) * (bot - top);
+      ctx.lineWidth = 1;
+      for (let s = Math.ceil((now - win) * 5) / 5; s <= now; s += 0.2) {
+        const major = Math.abs(s - Math.round(s)) < 0.01;
+        ctx.strokeStyle = major ? 'rgba(229,72,77,0.16)' : 'rgba(229,72,77,0.06)';
+        ctx.beginPath(); ctx.moveTo(Math.round(X(s)) + 0.5, 0); ctx.lineTo(Math.round(X(s)) + 0.5, h); ctx.stroke();
+      }
+      for (let k = 0; k <= 4; k++) { const y = Math.round(k / 4 * (h - 1)) + 0.5; ctx.strokeStyle = 'rgba(229,72,77,0.06)'; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+      const pulse = d => (d > 0 && d < 1.2) ? Math.exp(-(((d - 0.12) / 0.055) ** 2)) + 0.36 * Math.exp(-(((d - 0.34) / 0.08) ** 2)) : 0;
+      ctx.beginPath();
+      let ly = bot;
+      for (let x = 0; x <= w; x += 2) {
+        const tt = now - win + x / w * win; let v = 0;
+        for (const b of bt) v += pulse(tt - b.t);
+        ly = Yv(v);
+        x ? ctx.lineTo(x, ly) : ctx.moveTo(x, ly);
+      }
+      const g = ctx.createLinearGradient(0, 0, w, 0);
+      g.addColorStop(0, 'oklch(0.62 0.19 25 / 0)');
+      g.addColorStop(0.12, RED);
+      g.addColorStop(1, RED);
+      ctx.strokeStyle = g; ctx.lineWidth = 2.25; ctx.lineJoin = 'round'; ctx.stroke();
+      ctx.beginPath(); ctx.arc(w - 3, ly, 3.5, 0, Math.PI * 2); ctx.fillStyle = RED; ctx.fill();
+      ctx.font = '700 11px "Pretendard Variable", Pretendard, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      for (const b of bt) {
+        const px = X(b.t + 0.12);
+        if (px < 18 || now - b.t < 0.12) continue;
+        let v = 0; for (const o of bt) v += pulse(b.t + 0.12 - o.t);
+        const py = Yv(v) - 9;
+        ctx.globalAlpha = Math.min(1, px / 80);
+        ctx.fillStyle = b.bad ? 'oklch(0.58 0.13 65)' : '#3A4350';
+        ctx.fillText(b.bad ? '오류?' : String(Math.round(b.bpm)), px, Math.max(12, py));
+        ctx.globalAlpha = 1;
+      }
+    }
+    this.rafId = requestAnimationFrame(this.draw);
+  };
+
+  leave(s) {
+    const u = {};
+    if (s.nsub === 'run') { u.nsub = 'intro'; u.data = { ...(u.data || s.data), normal: [] }; }
+    if (s.fsub === 'run') { u.fsub = 'intro'; u.data = { ...(u.data || s.data), focus: [] }; }
+    if (s.gsub === 'q') { u.gsub = 'setup'; u.game = null; }
+    return u;
+  }
+  goStep = key => this.setState(s => {
+    const u = { ...this.leave(s), screen: key };
+    if (key === 'check') u.check = { start: performance.now(), stable: 0, doneAt: 0 };
+    return u;
+  });
+
+  startRun(p) {
+    const now = performance.now(), D = this.props.phaseSeconds ?? 35;
+    this.pendingArt = Math.random() < 0.6 ? { t: D * (0.35 + Math.random() * 0.4), kind: p === 'normal' || Math.random() < 0.5 ? 'spike' : 'miss' } : null;
+    this.setState(s => ({ [p === 'normal' ? 'nsub' : 'fsub']: 'run', phaseStart: now, now, dur: { ...s.dur, [p]: D }, data: { ...s.data, [p]: [] }, math: p === 'focus' ? freshMath() : s.math }));
+  }
+  stopRun(p) { this.setState(s => ({ [p === 'normal' ? 'nsub' : 'fsub']: 'intro', data: { ...s.data, [p]: [] } })); }
+
+  mathKey = k => this.setState(s => {
+    if (s.screen !== 'focus' || s.fsub !== 'run') return null;
+    const m = { ...s.math };
+    if (k === 'del') m.input = m.input.slice(0, -1);
+    else if (k === 'ok') {
+      if (!m.input) return null;
+      const ans = m.cur - 7;
+      if (parseInt(m.input, 10) === ans) { m.correct++; m.cur = ans < 7 ? 100 : ans; m.flash = 'ok'; }
+      else { m.wrong++; m.flash = 'bad'; }
+      m.input = ''; m.flashAt = performance.now();
+    } else if (m.input.length < 3) m.input += k;
+    return { math: m };
+  });
+
+  startGame = () => {
+    const n = this.props.rounds ?? 5, now = performance.now();
+    const qs = this.state.qText.slice(0, n).map((t, i) => (t || '').trim() || DEFAULT_Q[i] || `질문 ${i + 1}`);
+    const order = qs.map((_, i) => i).sort(() => Math.random() - 0.5), hot = order.slice(0, Math.random() < 0.5 ? 1 : 2);
+    const stress = qs.map((_, i) => hot.includes(i) ? 9 + Math.random() * 6 : Math.random() * 3.5);
+    this.setState({ gsub: 'q', game: { questions: qs, i: 0, answers: qs.map(() => null), beats: qs.map(() => []), qStart: now, stress, truth: qs.map(() => null) } });
+  };
+  answer(a) { this.setState(s => { if (!s.game) return null; const answers = s.game.answers.slice(); answers[s.game.i] = a; return { game: { ...s.game, answers } }; }); }
+  nextQ = () => this.setState(s => {
+    const g = s.game; if (!g) return null;
+    if (g.i < g.questions.length - 1) return { game: { ...g, i: g.i + 1, qStart: performance.now() } };
+    return { gsub: 'judge' };
+  });
+  setTruth(i, v) { this.setState(s => { if (!s.game || s.gsub === 'scored') return null; const truth = s.game.truth.slice(); truth[i] = v; return { game: { ...s.game, truth } }; }); }
+  editQ(i, v) { this.setState(s => { const qText = s.qText.slice(); qText[i] = v; return { qText }; }); }
+
+  renderVals() {
+    const st = this.state, P = this.props, now = st.now;
+    const thr = P.anomalyThreshold ?? 45;
+    const mode = (P.colorMode ?? '변화 방향') === '변화 방향' ? 'trend' : 'avg';
+    const cs = P.checkSeconds ?? 10, ps = P.phaseSeconds ?? 35, gD = P.gameSeconds ?? 8, rounds = P.rounds ?? 5;
+    const scrn = st.screen;
+    const N = analyze(st.data.normal, thr), F = analyze(st.data.focus, thr);
+    const runN = scrn === 'normal' && st.nsub === 'run', runF = scrn === 'focus' && st.fsub === 'run';
+    const elOf = k => Math.max(0, Math.min(st.dur[k], (now - st.phaseStart) / 1000));
+    const nC = bpmChart(N, st.dur.normal, mode, runN), fC = bpmChart(F, st.dur.focus, mode, runF);
+    const nAvg = N.valid.length >= 3 ? Math.round(N.avg) : null, fAvg = F.valid.length >= 3 ? Math.round(F.avg) : null;
+
+    const order = STEPS.map(s => s[0]), cur = order.indexOf(scrn);
+    const stepper = STEPS.map(([key, label], i) => ({
+      label, go: () => this.goStep(key), mark: i < cur ? '✓' : String(i + 1),
+      dotBg: i < cur ? '#0F1419' : i === cur ? RED : '#E3E6EA', dotColor: i <= cur ? '#FFFFFF' : '#5B6573',
+      bg: i === cur ? '#FFFFFF' : 'transparent', border: i === cur ? '#E6E8EC' : 'transparent', color: i <= cur ? '#0F1419' : '#8A93A0'
+    }));
+
+    const ck = st.check, cel = (now - ck.start) / 1000, stable = Math.min(8, ck.stable);
+    const chk = {
+      title: ck.doneAt ? '신호가 안정됐어요' : cel < 2.6 ? '신호를 찾는 중…' : '심장 박동을 감지하고 있어요',
+      sub: `안정된 박동 ${stable} / 8`,
+      dots: Array.from({ length: 8 }, (_, i) => ({ c: i < stable ? (ck.doneAt ? GREEN : RED) : '#E3E6EA' })),
+      btn: ck.doneAt ? `다음 단계 (${Math.max(1, Math.ceil(3 - (now - ck.doneAt) / 1000))})` : '다음 단계',
+      hint: ck.doneAt ? '잠시 후 보통 상태 측정으로 넘어가요.' : `최소 ${cs}초 동안 확인해요 · ${fmt(cel)}`
+    };
+
+    const badText = n => `오류 가능성으로 표시된 값 ${n}건은 평균 계산에서 제외했어요.`;
+    const nsub = st.nsub, fsub = st.fsub;
+    const nS = {
+      intro: nsub === 'intro', run: runN, review: nsub === 'review', showChart: nsub !== 'intro',
+      title: { intro: '보통 상태 측정', run: '보통 상태 측정 중', review: '보통 상태 결과' }[nsub],
+      desc: { intro: '등을 기대고 편안히 앉은 상태에서 심박을 측정해요. 이 값이 비교의 기준이 돼요.', run: '말하거나 움직이지 말고 천천히 호흡하세요.', review: '평소 상태의 심박이에요. 다음 단계에서 이 값과 비교해요.' }[nsub],
+      remain: fmt(st.dur.normal - (runN ? elOf('normal') : 0)), prog: P2(runN ? elOf('normal') / st.dur.normal * 100 : 0),
+      avg: nAvg ?? '—', hasBad: N.bad.length > 0, badText: badText(N.bad.length)
+    };
+    const fS = {
+      intro: fsub === 'intro', run: runF, review: fsub === 'review',
+      title: { intro: '집중 상태 측정', run: '집중 상태 측정 중', review: '집중 상태 결과' }[fsub],
+      desc: { intro: '측정이 시작되면 화면에 나오는 뺄셈 문제를 최대한 빠르고 정확하게 풀어 주세요.', run: '100에서 7씩 빼 보세요. 센서에서 손을 떼지 마세요.', review: '보통 상태와 비교해 심박이 어떻게 달라졌는지 확인해 보세요.' }[fsub],
+      remain: fmt(st.dur.focus - (runF ? elOf('focus') : 0)), prog: P2(runF ? elOf('focus') / st.dur.focus * 100 : 0)
+    };
+
+    const m = st.math, flashOn = now - m.flashAt < 700;
+    const math = {
+      q: `${m.cur} − 7 =`, input: m.input || '?', inputColor: m.input ? '#0F1419' : '#C4C9D0', correct: m.correct,
+      border: flashOn ? (m.flash === 'ok' ? GREEN : RED) : '#D5D9DF',
+      fb: flashOn ? (m.flash === 'ok' ? '정답!' : '다시 생각해 보세요') : '',
+      fbColor: m.flash === 'ok' ? GREEN_D : 'oklch(0.5 0.18 25)'
+    };
+    const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'del', '0', 'ok'].map(k => ({
+      label: k === 'del' ? '지우기' : k === 'ok' ? '확인' : k, on: () => this.mathKey(k),
+      bg: k === 'ok' ? '#0F1419' : '#FFFFFF', color: k === 'ok' ? '#FFFFFF' : '#0F1419', size: k === 'del' || k === 'ok' ? '15px' : '20px'
+    }));
+
+    const d = nAvg != null && fAvg != null ? fAvg - nAvg : null;
+    const badCount = N.bad.length + F.bad.length;
+    const sum = {
+      n: nAvg ?? '—', f: fAvg ?? '—',
+      d: d == null ? '—' : signed(d), arrow: d == null || d === 0 ? '' : d > 0 ? '▲' : '▼',
+      color: d > 0 ? 'oklch(0.52 0.19 25)' : d < 0 ? 'oklch(0.52 0.19 255)' : '#0F1419',
+      bg: d > 0 ? RED_T : d < 0 ? BLUE_T : '#F3F4F6',
+      formula: d == null ? '집중 평균 − 보통 평균' : `${fAvg} − ${nAvg} = ${d > 0 ? '+' : d < 0 ? '−' : ''}${Math.abs(d)}`,
+      text: d == null ? '보통 상태와 집중 상태를 모두 측정하면 변화량이 계산돼요.'
+        : d > 0 ? `집중할 때 심박수가 평균 ${d} BPM 높아졌어요. 교감 신경이 활성화되면 심장 박동이 빨라져요.`
+        : d < 0 ? `집중할 때 심박수가 평균 ${Math.abs(d)} BPM 낮아졌어요. 부교감 신경의 영향이 더 컸을 수 있어요.`
+        : '두 상태의 평균 심박수가 같아요.',
+      hasBad: badCount > 0, badText: badText(badCount)
+    };
+
+    const base = nAvg != null ? N.avg : 72;
+    const g = st.game, gsub = st.gsub;
+    let gq = {}, gC = bpmChart(analyze([], thr), gD, mode, false, base, `기준 ${Math.round(base)}`), gj = { rows: [] }, gsum = { hits: '—', total: '', text: '게임을 끝까지 진행하면 결과가 표시돼요.', hasReward: false, reward: '' };
+    if (g) {
+      const res = g.questions.map((text, i) => {
+        const A = analyze(g.beats[i], thr), after = A.valid.filter(b => b.t >= 1);
+        return { text, A, has: after.length > 0, rise: after.length ? Math.max(...after.map(b => b.s)) - base : 0 };
+      });
+      const md = median(res.map(r => r.rise));
+      res.forEach(r => { r.p = r.has ? Math.round(Math.min(97, Math.max(3, 100 / (1 + Math.exp(-((r.rise - md) / 2.2 - 0.6)))))) : 0; r.lie = r.p >= 60; });
+      const maxRise = Math.max(12, ...res.map(r => r.rise));
+      const i = g.i, qel = Math.max(0, Math.min(gD, (now - g.qStart) / 1000)), wDone = qel >= gD, ans = g.answers[i];
+      const dl = st.live.bpm - Math.round(base);
+      const sel = on => ({ bg: on ? '#0F1419' : '#FFFFFF', color: on ? '#FFFFFF' : '#0F1419', border: on ? '#0F1419' : '#D5D9DF' });
+      const y = sel(ans === '예'), n = sel(ans === '아니오');
+      gq = {
+        num: i + 1, total: g.questions.length, text: g.questions[i], remain: fmt(gD - qel), prog: P2(qel / gD * 100),
+        yesBg: y.bg, yesColor: y.color, yesBorder: y.border, noBg: n.bg, noColor: n.color, noBorder: n.border,
+        canNext: wDone && ans != null, cantNext: !(wDone && ans != null),
+        waitText: !wDone ? `심박 측정 중… ${Math.ceil(gD - qel)}초` : '대답 버튼을 눌러 주세요',
+        nextLabel: i < g.questions.length - 1 ? '다음 질문' : '탐지 결과 보기',
+        base: Math.round(base), nowBpm: st.live.bpm, delta: signed(dl),
+        dBg: dl > 2 ? RED_T : dl < -2 ? BLUE_T : '#EEF0F3', dColor: dl > 2 ? 'oklch(0.48 0.18 25)' : dl < -2 ? 'oklch(0.48 0.18 255)' : '#3A4350'
+      };
+      if (gsub === 'q') gC = bpmChart(res[i].A, gD, mode, true, base, `기준 ${Math.round(base)}`);
+      const top = res.reduce((b, r, k) => (r.p > res[b].p ? k : b), 0);
+      const revealing = gsub === 'reveal' || gsub === 'scored', scored = gsub === 'scored';
+      const allMarked = g.truth.every(t => t != null);
+      const hits = res.filter((r, k) => g.truth[k] != null && r.lie === (g.truth[k] === 'lie')).length;
+      const lies = g.truth.filter(t => t === 'lie').length;
+      const fooled = res.filter((r, k) => g.truth[k] === 'lie' && !r.lie).length;
+      const rewardTitle = lies === 0 ? '거짓말 없이 모두 진실이었네요' : fooled > 0 ? `탐지기를 ${fooled}번 속였어요!` : '탐지기가 거짓말을 모두 찾아냈어요';
+      const rewardText = fooled > 0 ? '속이기 성공 보상으로 간식 2개를 받아 가세요.' : '참가 보상으로 간식 1개를 받아 가세요.';
+      gj = {
+        topNum: top + 1, judging: gsub === 'judge', canScore: gsub === 'reveal' && allMarked, waitScore: gsub === 'reveal' && !allMarked, scored,
+        desc: `기준 심박(${nAvg != null ? '보통 상태 평균' : '기본값'} ${Math.round(base)} BPM)보다 얼마나 올랐는지, 다른 질문과 비교해 판정했어요.`,
+        hits, total: res.length, rewardTitle, rewardText,
+        rows: res.map((r, k) => {
+          const tr = g.truth[k], hit = tr ? r.lie === (tr === 'lie') : null;
+          const tb = on => ({ bg: on ? '#0F1419' : '#FFFFFF', color: on ? '#FFFFFF' : '#3A4350' });
+          const a1 = tb(tr === 'truth'), a2 = tb(tr === 'lie');
+          return {
+            num: `Q${k + 1}`, text: r.text, ans: g.answers[k] ?? '—',
+            rise: r.has ? signed(Math.round(r.rise)) : '—', barW: P2(Math.max(0, r.rise) / maxRise * 100), barC: r.lie ? RED : '#9AA3AF',
+            p: r.has ? r.p + '%' : '—', pW: P2(r.p), pC: r.lie ? RED : '#3A4350',
+            verdict: r.lie ? '거짓 의심' : '진실', vBg: r.lie ? RED_T : '#F1F2F4', vColor: r.lie ? 'oklch(0.48 0.18 25)' : '#3A4350',
+            showToggle: revealing, onTruth: () => this.setTruth(k, 'truth'), onLie: () => this.setTruth(k, 'lie'),
+            tBg: a1.bg, tColor: a1.color, lBg: a2.bg, lColor: a2.color,
+            showHit: scored && hit != null, hitText: hit ? '탐지 성공' : '탐지 실패', hitColor: hit ? GREEN_D : AMBER_D
+          };
+        })
+      };
+      if (scored) gsum = { hits: String(hits), total: `/ ${res.length}`, text: `가장 의심된 답변은 질문 ${top + 1} "${res[top].text}"였어요. ${rewardTitle}`, hasReward: true, reward: rewardText };
+    }
+
+    const evs = [...N.events.map(e => ({ ...e, name: '보통' })), ...F.events.map(e => ({ ...e, name: '집중' }))];
+    const ev = evs[evs.length - 1];
+    const rapid = ev && (runN || runF || scrn === 'summary') ? { has: true, text: `${ev.name} 상태 ${fmt(ev.t1)} · 5초 동안 ${ev.d > 0 ? '+' : '−'}${Math.abs(Math.round(ev.d))} BPM` } : { has: false, text: '' };
+
+    const unstable = now - st.lastBadAt < 3000 || (scrn === 'check' && !ck.doneAt && cel < 2.6);
+    const on = unstable ? 'oklch(0.75 0.15 70)' : GREEN;
+    const sensor = { label: unstable ? '불안정' : '양호', color: on, bars: ['6px', '10px', '14px', '18px'].map((h, i) => ({ h, c: i < (unstable ? 2 : 4) ? on : '#E3E6EA' })) };
+    const tr = st.live.trend;
+    const trend = tr > 1 ? { text: '▲ 빨라지는 중', color: 'oklch(0.5 0.18 25)', bg: RED_T } : tr < -1 ? { text: '▼ 느려지는 중', color: 'oklch(0.5 0.18 255)', bg: BLUE_T } : { text: '● 안정', color: '#3A4350', bg: '#F1F2F4' };
+
+    return {
+      heartRef: this.heartRef, heart3dRef: this.heart3dRef, canvasRef: this.canvasRef,
+      live: st.live, trend, sensor, rapid, stepper,
+      scr: { home: scrn === 'home', check: scrn === 'check', normal: scrn === 'normal', focus: scrn === 'focus', game: scrn === 'game', summary: scrn === 'summary' },
+      times: { check: `약 ${cs}초`, phase: `${ps}초`, game: `질문 ${rounds}개 × ${gD}초` },
+      startLabel: `측정 시작 · ${ps}초`,
+      chk, nS, fS, math, keys, sum, nC, fC, gC, gq, gj, gsum,
+      gS: { setup: gsub === 'setup', q: gsub === 'q', result: gsub === 'judge' || gsub === 'reveal' || gsub === 'scored' },
+      qEdit: st.qText.slice(0, rounds).map((t, i) => ({ num: i + 1, text: t, on: e => this.editQ(i, e.target.value) })),
+      legend: mode === 'trend' ? { hi: '빨라지는 구간', lo: '느려지는 구간' } : { hi: '평균보다 빠름', lo: '평균보다 느림' },
+      rr: rrChart(N, F, st.dur.normal, st.dur.focus),
+      onRestart: () => this.setState({ ...freshFlow(), now: performance.now() }),
+      onStart: () => this.goStep('check'),
+      onCheckNext: () => this.goStep('normal'),
+      onStartNormal: () => this.startRun('normal'), onStopNormal: () => this.stopRun('normal'),
+      onGoFocus: () => this.goStep('focus'),
+      onStartFocus: () => this.startRun('focus'), onStopFocus: () => this.stopRun('focus'),
+      onGoGame: () => this.goStep('game'),
+      onResetQ: () => this.setState({ qText: DEFAULT_Q.slice() }),
+      onStartGame: this.startGame,
+      onYes: () => this.answer('예'), onNo: () => this.answer('아니오'),
+      onNextQ: this.nextQ,
+      onReveal: () => this.setState({ gsub: 'reveal' }),
+      onScore: () => this.setState({ gsub: 'scored' }),
+      onReplayGame: () => this.setState({ gsub: 'setup', game: null }),
+      onGoSummary: () => this.goStep('summary')
+    };
+  }
+}
+</script>
+</body>
+</html>
