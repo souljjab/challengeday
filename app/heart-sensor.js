@@ -686,7 +686,7 @@
       this.wavePending = [];
       this.beatPending = [];
       this.lastFlush = 0;
-      this.timing = { dt: 1000 / FS, nRef: null, tRef: null, n0: null, t0: null, fs: null };
+      this.timing = { dt: 1000 / FS, nRef: null, tRef: null, n0: null, t0: null, fs: null, tLast: null, nLast: 0 };
       this.lastBeat = null;
       this.rrs = [];
     }
@@ -822,13 +822,20 @@
         return;
       }
       if (r.tag === 'HELLO') this.syncFirmware();
-      if (r.tag === 'OVF') this.timing.n0 = null;
+      // 샘플이 빠졌거나 센서·아두이노가 다시 시작하면 샘플 속도를 처음부터 다시 재요
+      if (r.tag === 'OVF' || r.tag === 'OK' || r.tag === 'ERR' || r.tag === 'HELLO') this.timing.n0 = null;
       this.statusDirty = true;
     }
     // 샘플 번호 → 실제 시각. 시리얼은 몇 개씩 몰려서 오므로, 도착 시각 중 가장 이른 것을 기준으로 잡아요.
     updateTiming(n, t) {
       const tm = this.timing;
+      // 샘플이 0.5초 넘게 빠졌으면(센서 재연결 등) 기준을 새로 잡아요. 빠진 시간까지 샘플 간격으로 치면 샘플 속도가
+      // 낮게 계산되어 BPM이 몇 분 동안 5~15% 낮게 나와요. 브라우저가 바빠서 늦게 몰아서 받은 건(샘플 수는 맞음) 괜찮아요.
+      if (tm.tLast != null && t - tm.tLast - (n - tm.nLast) * tm.dt > 500) { tm.n0 = null; tm.nRef = null; }
+      tm.tLast = t;
+      tm.nLast = n;
       if (tm.n0 == null) { tm.n0 = n; tm.t0 = t; }
+      else if (t - tm.t0 < 2000) tm.t0 = Math.min(tm.t0, t - (n - tm.n0) * tm.dt);  // 첫 묶음이 늦게 왔을 수 있어서 가장 이른 도착 기준으로
       else if (t - tm.t0 > 10000) {
         const fs = (n - tm.n0) / (t - tm.t0) * 1000;
         tm.fs = fs;

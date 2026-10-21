@@ -54,6 +54,21 @@ const check = (cond, msg) => { console.log((cond ? '  ✓ ' : '  ✗ ') + msg); 
   check(await fr.getByText('센서 연결됨').count() > 0, '헤더 배지 "센서 연결됨"');
   await page.screenshot({ path: path.join(shots, '4-monitor-live.png') });
 
+  console.log('3-1. 센서가 5초 동안 빠졌다 다시 연결돼도 BPM이 그대로');
+  await page.evaluate(() => {
+    window.__beats = [];
+    window.HeartSensor.getHub().subscribe(ev => { if (ev.type === 'beat' && ev.beat.bpm) window.__beats.push({ t: performance.now(), bpm: ev.beat.bpm }); });
+    window.__fake.dropMs = 5000;
+  });
+  await page.waitForTimeout(18000);
+  // 숨 쉴 때마다 박동 간격이 출렁이므로 마지막 8초 동안의 평균으로 봐요
+  const after = await page.evaluate(() => {
+    const h = window.HeartSensor.getHub(), bs = window.__beats.filter(b => b.t > performance.now() - 8000);
+    return { bpm: bs.length ? bs.reduce((a, b) => a + b.bpm, 0) / bs.length : null, n: bs.length, fs: h.timing.fs };
+  });
+  check(after.bpm != null && after.n >= 5 && Math.abs(after.bpm - 72) <= 3 && (after.fs == null || Math.abs(after.fs - 100) < 3),
+    `다시 연결 뒤 평균 심박수 ${after.bpm ? after.bpm.toFixed(1) : '-'} (정답 72, 박동 ${after.n}개, 샘플 속도 추정 ${after.fs ? after.fs.toFixed(1) : '-'}Hz)`);
+
   console.log('4. 보통/집중 측정 (10초씩으로 줄여서)');
   await frame.evaluate(() => window.__dcSetProps('Heart Rate Monitor', { phaseSeconds: 10 }));
   await fr.getByRole('button', { name: '측정 시작' }).click();

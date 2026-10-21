@@ -1,8 +1,9 @@
 // 브라우저 테스트용 가짜 아두이노. HeartSensor 펌웨어와 같은 형식으로 합성 맥파를 100Hz로 보내요.
-// window.__fake = { hr, finger, pi, ovf } 를 바꿔 상황을 흉내 낼 수 있어요. (ovf: 샘플 앞에 '#OVF 1'을 끼우는 비율)
+// window.__fake = { hr, finger, pi, ovf, dropMs } 를 바꿔 상황을 흉내 낼 수 있어요.
+// (ovf: 샘플 앞에 '#OVF 1'을 끼우는 비율, dropMs: 그 시간 동안 센서가 빠졌다가 다시 연결됨)
 (() => {
   if (window.top !== window) return;
-  const fake = window.__fake = { hr: 72, finger: true, pi: 0.012, ovf: window.__fakeOvf || 0, cmds: [], granted: false };
+  const fake = window.__fake = { hr: 72, finger: true, pi: 0.012, ovf: window.__fakeOvf || 0, dropMs: 0, cmds: [], granted: false };
   class FakePort extends EventTarget {
     getInfo() { return { usbVendorId: 0x1A86, usbProductId: 0x7523 }; }
     async open() {
@@ -11,13 +12,27 @@
       this.readable = new ReadableStream({ start(c) { ctrl = c; }, cancel() { clearInterval(port.timer); } });
       this.writable = new WritableStream({ write(chunk) { fake.cmds.push(new TextDecoder().decode(chunk).trim()); } });
       fake.granted = true;
-      const t0 = performance.now();
+      let t0 = performance.now(), drop = null;
       let n = 0, nextBeat = 0.5, beats = [], seed = 1;
       const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647 - 0.5; };
       setTimeout(() => ctrl.enqueue(enc.encode('\0\xff#HELLO HeartSensor 1.0\n#OK MAX30102 rev=3\n')), 300);
       this.timer = setInterval(() => {
-        const target = Math.floor((performance.now() - t0 - 400) / 10);
+        const now = performance.now();
         let out = '';
+        // 센서가 빠지면 펌웨어처럼 SENSOR_LOST → 2초마다 NO_SENSOR → 다시 연결되면 OK. 빠진 동안의 샘플은 없어요.
+        if (!drop && fake.dropMs) { drop = { start: now, retry: now + 2000 }; out += '#ERR SENSOR_LOST\n'; }
+        if (drop) {
+          if (now >= drop.retry) {
+            if (now - drop.start >= fake.dropMs) {
+              out += '#OK MAX30102 rev=3\n';
+              t0 += now - drop.start;
+              drop = null;
+              fake.dropMs = 0;
+            } else { out += '#ERR NO_SENSOR\n#I2C none\n'; drop.retry += 2000; }
+          }
+          if (drop) { if (out) ctrl.enqueue(enc.encode(out)); return; }
+        }
+        const target = Math.floor((now - t0 - 400) / 10);
         while (n < target) {
           const t = n / 100;
           // 숨 쉴 때마다(4초 주기) 박동 간격이 ±12% 출렁이는 실제 사람처럼

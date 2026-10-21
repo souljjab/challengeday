@@ -54,6 +54,10 @@ const byte LED_MODE       = 2;     // 2 = Red + IR
 const int  SAMPLE_RATE    = 400;   // 400번/초 ÷ 4 = 100번/초
 const int  PULSE_WIDTH    = 411;   // 411us = 18비트 해상도
 const int  ADC_RANGE      = 16384; // 가장 넓은 범위 (손가락이 두꺼워도 신호가 잘 안 잘려요)
+// 위 설정이 센서에 제대로 들어갔는지 확인할 레지스터 값이에요. (위 설정을 바꾸면 이 값도 같이 바꿔 주세요)
+const uint8_t EXPECT_FIFO_CONFIG = 0x50;  // 0x08: 4회 평균 + 가득 차면 덮어쓰기
+const uint8_t EXPECT_MODE        = 0x03;  // 0x09: Red + IR
+const uint8_t EXPECT_SPO2_CONFIG = 0x6F;  // 0x0A: 16384nA, 400sps, 411us
 
 const uint32_t TARGET_LEVEL = 150000;  // LED 자동 조절 목표 (최대 262143의 약 57%)
 const uint32_t TARGET_LOW   = 90000;   // 이 범위 안이면 LED를 건드리지 않아요
@@ -85,6 +89,7 @@ const uint8_t PART_ID = 0x15;          // MAX30102·MAX30105의 부품 번호
 bool sensorOk = false;
 bool everOk = false;          // 한 번이라도 센서가 연결됐었는지 (다시 연결할 때 LED 밝기를 그대로 둬요)
 bool autoLed = true;
+bool ledPending = false;      // LED 설정이 센서에 제대로 안 들어갔으면 다음에 다시 써요
 bool finger = false;
 uint8_t fingerCount = 0;
 unsigned long fingerSince = 0;
@@ -103,10 +108,21 @@ char cmdBuf[10];
 uint8_t cmdLen = 0;
 
 // ───────── 센서 ─────────
-void applyLed() {
+uint8_t readReg(uint8_t reg) {
+  return particleSensor.readRegister8(MAX30105_ADDRESS, reg);
+}
+
+// 라이브러리는 쓰기가 실패해도 알려주지 않아서, 다시 읽어 확인해요
+bool applyLed() {
   particleSensor.setPulseAmplitudeRed(paRed);
   particleSensor.setPulseAmplitudeIR(paIr);
   statDirty = true;
+  return readReg(0x0C) == paRed && readReg(0x0D) == paIr;
+}
+
+// setup()의 설정이 모두 들어갔는지 (배선이 흔들리는 중에 하나라도 실패하면 샘플 속도 등이 틀어져요)
+bool configOk() {
+  return readReg(0x08) == EXPECT_FIFO_CONFIG && readReg(0x09) == EXPECT_MODE && readReg(0x0A) == EXPECT_SPO2_CONFIG;
 }
 
 void resetAgc() {
@@ -154,10 +170,15 @@ bool initSensor() {
 
   // Example6_FIFO_Readings와 같은 방법으로 설정해요 (FIFO도 여기서 비워요)
   particleSensor.setup(paIr, SAMPLE_AVERAGE, LED_MODE, SAMPLE_RATE, PULSE_WIDTH, ADC_RANGE);
-  applyLed();                  // setup()은 모든 LED를 같은 밝기로 켜서, Red만 따로 다시 맞춰요
+  // setup()은 모든 LED를 같은 밝기로 켜서, Red만 따로 다시 맞춰요
+  if (!applyLed() || !configOk()) {
+    Serial.println(F("#ERR SETUP_FAILED"));   // 2초 뒤에 처음부터 다시 해요
+    return false;
+  }
 
   if (!everOk) { finger = false; fingerCount = 0; }
   everOk = true;
+  ledPending = false;
   resetAgc();
   lastSample = millis();
   lostChecks = stalls = 0;
@@ -221,7 +242,7 @@ void runAgc() {
     paIr = nIr;
     paRed = nRed;
     outIr = outRed = 0;
-    applyLed();
+    if (!applyLed()) ledPending = true;              // 통신이 잠깐 실패하면 다음에 다시 써요
     agcSkip = 1;
   }
 }
@@ -326,7 +347,7 @@ void runCommand() {
     if (v > 255) v = 255;
     autoLed = false;
     paIr = paRed = (uint8_t)v;
-    if (sensorOk) applyLed();
+    if (sensorOk && !applyLed()) ledPending = true;
     statDirty = true;
     agcSkip = 1;
   } else if (c == 'R' || c == 'r') {
@@ -374,6 +395,7 @@ void loop() {
   lastPoll = micros();
   readSamples();
   if (!sensorOk) return;
+  if (ledPending && applyLed()) ledPending = false;
 
   if (statDirty || millis() - lastStat >= 500) printStat();
 }
