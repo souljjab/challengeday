@@ -239,7 +239,7 @@ test('이완기 물결이 커도 박동을 두 번 세지 않고 맞는 BPM을 �
 
 // ───────── 부스처럼 여러 사람이 차례로 측정할 때 ─────────
 // parts: [{ sig, finger }] 를 이어 붙여 펌웨어 형식으로 흘려보내요. finger=false 구간은 손가락 없는 잡음.
-function sequence(parts, { ovfEvery = 0 } = {}) {
+function sequence(parts, { ovfEvery = 0, ovfChronic = 0 } = {}) {
   const core = new StreamCore(3), r = rng(99), out = [];
   core.line('#OK MAX30102 rev=3');
   let n = 0;
@@ -247,7 +247,8 @@ function sequence(parts, { ovfEvery = 0 } = {}) {
     const len = part.sig ? part.sig.ir.length : part.seconds * 100;
     for (let i = 0; i < len; i++, n++) {
       if (n % 50 === 0) core.line(`#STAT 100 100 ${part.sig ? 1 : 0} ${part.sig ? 800 : 20} 1`);
-      if (ovfEvery && n % (ovfEvery * 100) === 0 && n > 0) { core.line('#OVF 1'); i += 8; n += 8; continue; }
+      if (ovfEvery && n % (ovfEvery * 100) === 0 && n > 0) { core.line('#OVF 8'); i += 8; n += 8; continue; }
+      if (ovfChronic && r() < ovfChronic) core.line('#OVF 1');
       const ir = part.sig ? part.sig.ir[i] : 2000 + 40 * (r() - 0.5), red = part.sig ? part.sig.red[i] : 1500 + 40 * (r() - 0.5);
       const res = core.line(`${Math.round(ir)},${Math.round(red)}`);
       if (res && res.beat) out.push({ t: n / 100, ok: res.beat.ok, rr: res.beat.rr, part: parts.indexOf(part) });
@@ -283,6 +284,19 @@ test('손가락을 세게 눌러 맥동이 갑자기 작아져도 곧 다시 잡
     let gap = ok.length ? ok[0] - 30 : 30;
     for (let i = 1; i < ok.length; i++) gap = Math.max(gap, ok[i] - ok[i - 1]);
     assert.ok(gap < 9, `맥동이 작아진 뒤 박동이 ${gap.toFixed(1)}초 동안 끊겼어요`);
+  }
+});
+
+// 실제 센서 기록(원신호_20261021_232946): 넘치지 않았는데도 샘플 10개 중 9개 앞에 '#OVF 1'이 붙어 왔어요
+test('센서가 거의 샘플마다 #OVF 1을 보내도 맥박을 잡아요', () => {
+  for (const seed of [1, 2, 3]) {
+    const sig = realppg({ seconds: 60, seed, hr: 88, pi: 0.005 });
+    const { beats } = sequence([{ sig }], { ovfChronic: 0.89 });
+    const ok = beats.filter(b => b.ok);
+    const first = ok.length ? ok[0].t : Infinity;
+    const right = ok.filter(b => b.rr && Math.abs(60 * 100 / b.rr - 88) < 0.2 * 88).length;
+    assert.ok(first < 12, `첫 박동까지 ${first.toFixed(1)}초`);
+    assert.ok(ok.length > 60 && right / ok.length > 0.85, `박동 ${ok.length}개, BPM이 맞는 비율 ${(right / ok.length * 100).toFixed(0)}%`);
   }
 });
 

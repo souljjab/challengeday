@@ -1,8 +1,8 @@
 // 브라우저 테스트용 가짜 아두이노. HeartSensor 펌웨어와 같은 형식으로 합성 맥파를 100Hz로 보내요.
-// window.__fake = { hr, finger, pi } 를 바꿔 상황을 흉내 낼 수 있어요.
+// window.__fake = { hr, finger, pi, ovf } 를 바꿔 상황을 흉내 낼 수 있어요. (ovf: 샘플 앞에 '#OVF 1'을 끼우는 비율)
 (() => {
   if (window.top !== window) return;
-  const fake = window.__fake = { hr: 72, finger: true, pi: 0.012, cmds: [], granted: false };
+  const fake = window.__fake = { hr: 72, finger: true, pi: 0.012, ovf: window.__fakeOvf || 0, cmds: [], granted: false };
   class FakePort extends EventTarget {
     getInfo() { return { usbVendorId: 0x1A86, usbProductId: 0x7523 }; }
     async open() {
@@ -28,6 +28,7 @@
           const dc = fake.finger ? 150000 : 1900;
           const ir = Math.round(dc * (1 - (fake.finger ? fake.pi * ac : 0)) + 20 * rnd() * 2);
           const red = Math.round(ir * 0.75);
+          if (fake.ovf && Math.random() < fake.ovf) out += '#OVF 1\n';
           out += ir + ',' + red + '\n';
           if (n % 50 === 0) out += `#STAT ${fake.finger ? 187 : 96} ${fake.finger ? 255 : 96} ${fake.finger ? 1 : 0} ${fake.finger ? 800 : 20} 1\n`;
           n++;

@@ -59,6 +59,7 @@ const uint16_t FINGER_OFF = 80;
 const uint8_t AGC_WINDOW = 20;         // 20샘플(0.2초)마다 LED 밝기를 점검
 const unsigned long POLL_US = 10000;   // 10ms마다 FIFO를 읽어요 (FIFO는 0.32초분까지 담아 둬요)
 const uint8_t MAX_I2C_FAILS = 20;      // 연속 20번(0.2초) 실패해야 센서가 빠진 것으로 봐요
+const unsigned long NO_DATA_MS = 200;  // 이만큼 새 샘플이 없으면 FIFO를 다시 시작해요
 
 // ───────── MAX30102 레지스터 ─────────
 const uint8_t MAX_ADDR = 0x57;
@@ -96,8 +97,8 @@ uint16_t reflectance = 0;
 uint32_t sumIr = 0, sumRed = 0, maxIr = 0, maxRed = 0;
 uint8_t agcCount = 0, agcSkip = 0;
 
-unsigned long lastStat = 0, lastRetry = 0, lastPoll = 0;
-uint8_t i2cFails = 0;
+unsigned long lastStat = 0, lastRetry = 0, lastPoll = 0, lastSample = 0;
+uint8_t i2cFails = 0, stalls = 0;
 bool statDirty = true;
 
 char cmdBuf[10];
@@ -161,6 +162,8 @@ bool initSensor() {
   everOk = true;
   ledPending = false;
   resetAgc();
+  lastSample = millis();
+  stalls = 0;
   Serial.print(F("#OK MAX30102 rev="));
   Serial.println(rev);
   return true;
@@ -271,17 +274,31 @@ uint32_t read18() {
 
 // FIFO에 쌓인 샘플을 모두 읽어요. I2C 오류면 false.
 bool readFifo() {
-  // 쓰기 위치·넘친 수·읽기 위치(0x04~0x06)를 한 번에 읽어야 세 값이 서로 어긋나지 않아요
+  // 쓰기 위치·넘친 수·읽기 위치(0x04~0x06)를 한 번에 읽어야 세 값이 서로 어긋나지 않아요.
+  // 넘친 수(OVF)는 쓰지 않아요: 호환 칩 중에는 넘치지 않았는데도 샘플마다 1이 되는 것이 있어서,
+  // 그대로 알리면 앱이 매번 신호가 끊긴 것으로 처리했어요. (SparkFun 라이브러리도 이 값을 쓰지 않아요)
   Wire.beginTransmission(MAX_ADDR);
   Wire.write(REG_FIFO_WR_PTR);
   if (Wire.endTransmission(false) != 0) return false;
   if (Wire.requestFrom(MAX_ADDR, (uint8_t)3) != 3) return false;
-  uint8_t wr = Wire.read(), ovf = Wire.read(), rd = Wire.read();
+  uint8_t wr = Wire.read();
+  Wire.read();
+  uint8_t rd = Wire.read();
   uint8_t n = (wr - rd) & 0x1F;
-  if (ovf) {
-    if (n == 0) n = 32;
-    Serial.print(F("#OVF "));
-    Serial.println(ovf);
+  if (n) {
+    lastSample = millis();
+    stalls = 0;
+  } else if (millis() - lastSample >= NO_DATA_MS) {
+    // 0.2초 넘게 새 샘플이 없어요. FIFO가 가득 차면 쓰기·읽기 위치가 같아져서 멈춘 것처럼 보여요: 비우고 다시 시작해요.
+    // 그래도 계속 안 오면 센서 설정을 처음부터 다시 해요.
+    lastSample = millis();
+    if (++stalls >= 3) {
+      sensorOk = false;
+      lastRetry = 0;
+      return true;
+    }
+    if (!(writeReg(REG_FIFO_WR_PTR, 0) && writeReg(REG_OVF_COUNTER, 0) && writeReg(REG_FIFO_RD_PTR, 0))) return false;
+    Serial.println(F("#OVF 32"));
   }
   while (n > 0) {
     uint8_t k = n > 5 ? 5 : n;                       // Wire 버퍼(32바이트)에 맞춰 5개씩
@@ -392,6 +409,7 @@ void loop() {
     return;
   }
   i2cFails = 0;
+  if (!sensorOk) return;
   if (ledPending && applyLed()) ledPending = false;
 
   if (statDirty || millis() - lastStat >= 500) printStat();

@@ -20,6 +20,7 @@
   const SPAN = 4;            // 기울기를 계산할 간격 (샘플)
   const SAT = 250000;        // 이 이상이면 빛이 너무 세서 신호가 잘린 것
   const BAUD = 115200;
+  const OVF_GAP = 4;         // #OVF로 이만큼(40ms) 이상 샘플이 빠졌다고 하면 그 구간을 건너뛰어요
 
   // 민감도 1(낮음) ~ 5(높음). 높일수록 약한 박동도 잡지만 잡음도 박동으로 잘못 셀 수 있어요.
   const SENSITIVITY = [
@@ -521,7 +522,15 @@
       else if (tag === 'OK') { fw.sensorOk = true; fw.err = ''; fw.i2c = ''; proc.restart(); }
       else if (tag === 'ERR') { fw.sensorOk = false; fw.err = parts.join(' '); }
       else if (tag === 'I2C') { fw.i2c = parts.join(' '); }
-      else if (tag === 'OVF') { proc.gap(); }
+      else if (tag === 'OVF') {
+        // 'OVF n' = 센서 FIFO가 넘쳐서 샘플 n개를 잃었다는 뜻이에요. 그런데 호환 칩 중에는 넘치지 않았는데도
+        // 샘플마다 'OVF 1'을 보내는 것이 있어서, 매번 끊김으로 처리하면 맥박을 영영 못 잡아요.
+        // 몇 개(30ms 이하) 빠진 건 맥박 모양에 거의 영향이 없으니 무시하고, 1초 안에 또 오면 믿을 수 없는 값이라 무시해요.
+        const lost = parseInt(parts[0], 10) || 0, last = this.lastOvf;
+        this.lastOvf = proc.n;
+        if (lost < OVF_GAP || (last != null && proc.n - last < FS)) return null;
+        proc.gap();
+      }
       else if (tag === 'STAT') {
         const [pi, pr, f, r, au] = parts.map(Number);
         if (fw.paIr != null && (pi !== fw.paIr || pr !== fw.paRed)) {

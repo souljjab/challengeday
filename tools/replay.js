@@ -12,7 +12,8 @@ if (!file) {
 const core = new StreamCore(+(process.argv[3] || 3));
 const proc = core.proc;
 
-const restarts = { led: 0, finger: 0, ovf: 0, ok: 0 };
+const restarts = { led: 0, finger: 0, ok: 0 };
+const ovf = { lines: 0, gaps: 0 };
 let cause = null;
 const origRestart = proc.restart.bind(proc);
 proc.restart = () => { restarts[cause || 'ok']++; origRestart(); };
@@ -24,13 +25,14 @@ for (const raw of lines) {
   const line = raw.trim();
   if (!line || line.startsWith('# ')) continue;
   const prev = { paIr: core.fw.paIr, paRed: core.fw.paRed, finger: core.fw.finger };
-  cause = line.startsWith('#STAT') ? (core.fw.paIr != null ? 'led' : null) : line.startsWith('#OVF') ? 'ovf' : line.startsWith('#OK') ? 'ok' : null;
+  cause = line.startsWith('#STAT') ? (core.fw.paIr != null ? 'led' : null) : line.startsWith('#OK') ? 'ok' : null;
   if (line.startsWith('#STAT')) {
     const [pi, pr, f] = line.slice(6).split(/\s+/).map(Number);
     if (prev.paIr != null && pi === prev.paIr && pr === prev.paRed && !!f && !prev.finger) cause = 'finger';
   }
   const r = core.line(line);
   cause = null;
+  if (line.startsWith('#OVF')) { ovf.lines++; if (r) ovf.gaps++; }
   if (!r || r.type !== 'sample') continue;
   samples++;
   if (proc.pulseOk) okSamples++;
@@ -65,4 +67,5 @@ for (const r of rows) console.log(r);
 console.log('');
 console.log(`샘플 ${samples}개 (${(samples / FS).toFixed(1)}초), 데이터 아닌 줄 ${core.badLines}개`);
 console.log(`검출한 박동 ${beats}개 중 화면에 보낸(인정된) 박동 ${okBeats}개, 맥박 인정 상태였던 시간 ${(okSamples / Math.max(1, samples) * 100).toFixed(0)}%`);
-console.log(`재시작: LED 변경 ${restarts.led}번, 손가락 감지 ${restarts.finger}번, FIFO 넘침 ${restarts.ovf}번, 센서 시작 ${restarts.ok}번`);
+console.log(`재시작: LED 변경 ${restarts.led}번, 손가락 감지 ${restarts.finger}번, 센서 시작 ${restarts.ok}번`);
+console.log(`FIFO 넘침(#OVF) ${ovf.lines}줄 중 구간을 건너뛴 것 ${ovf.gaps}번` + (ovf.lines > samples / 10 ? '  ← 센서가 #OVF를 너무 자주 보내요(호환 칩). 작은 값은 무시해요' : ''));

@@ -16,6 +16,8 @@ const check = (cond, msg) => { console.log((cond ? '  ✓ ' : '  ✗ ') + msg); 
   const browser = await pw.chromium.launch({ executablePath: exe, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader'] });
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 980 }, acceptDownloads: true });
   await ctx.route(/^https?:/, r => r.abort());               // 인터넷 없이도 되는지 확인
+  // E2E_OVF=0.9 : 일부 호환 칩처럼 샘플 앞에 '#OVF 1'을 그 비율로 끼워 보내요
+  if (process.env.E2E_OVF) await ctx.addInitScript(`window.__fakeOvf = ${+process.env.E2E_OVF}`);
   await ctx.addInitScript({ path: path.join(__dirname, 'fake-serial.js') });
   const page = await ctx.newPage();
   const errors = [];
