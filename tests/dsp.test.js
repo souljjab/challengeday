@@ -134,17 +134,21 @@ test('세게 눌러 맥박이 없거나 손가락이 없으면 박동을 인정�
 });
 
 // 펌웨어가 보내는 줄 형식 그대로 StreamCore에 넣어요. ledAt: [[초, 배율]] 이 시각부터 LED 밝기가 배율만큼 바뀜
-function stream(sig, { ledAt = [], fingerFlicker = [] } = {}) {
+// ledAt 항목의 세 번째 값은 실제 빛의 변화 배율 (LED가 전류에 정확히 비례하지 않는 경우)
+function stream(sig, { ledAt = [], fingerFlicker = [], corrupt = [] } = {}) {
   const core = new StreamCore(3), out = { beats: [], okAt: [] };
   let pa = 100, k = 1;
   core.line('#HELLO HeartSensor 1.0');
   core.line('#OK MAX30102 rev=3');
   for (let n = 0; n < sig.ir.length; n++) {
     const t = n / 100;
-    for (const [at, f] of ledAt) if (Math.abs(t - at) < 0.005) { pa = Math.round(pa * f); k *= f; }
+    for (const [at, f, real] of ledAt) if (Math.abs(t - at) < 0.005) { pa = Math.round(pa * f); k *= real ?? f; }
     const finger = !fingerFlicker.some(([a, b]) => t >= a && t < b);
     if (n % 50 === 0 || ledAt.some(([at]) => Math.abs(t - at) < 0.005)) core.line(`#STAT ${pa} ${pa} ${finger ? 1 : 0} 800 1`);
-    const r = core.line(`${Math.round(sig.ir[n] * k)},${Math.round(sig.red[n] * k)}`);
+    let line = `${Math.round(sig.ir[n] * k)},${Math.round(sig.red[n] * k)}`;
+    if (corrupt.some(at => Math.abs(t - at) < 0.005)) line = line.slice(0, 2) + line.slice(3);  // 글자 하나 빠짐
+    const r = core.line(line);
+    if (!r) continue;
     if (r.beat) { out.beats.push(r.beat.idx / 100); if (r.beat.ok) out.okAt.push(r.beat.idx / 100); }
   }
   return out;
@@ -167,4 +171,68 @@ test('손가락 감지 신호가 잠깐 깜빡여도 맥박을 잡고 있으면 
   let gap = 0;
   for (let i = 1; i < after.length; i++) gap = Math.max(gap, after[i] - after[i - 1]);
   assert.ok(gap < 1.6, `손가락 신호가 깜빡일 때 박동이 ${gap.toFixed(1)}초 끊겼어요`);
+});
+
+const maxGap = (okAt, from) => {
+  const a = okAt.filter(t => t > from);
+  let g = 0;
+  for (let i = 1; i < a.length; i++) g = Math.max(g, a[i] - a[i - 1]);
+  return { gap: g, count: a.length };
+};
+
+test('LED 밝기가 전류와 정확히 비례하지 않아도 끊기지 않아요', () => {
+  const sig = realppg({ seconds: 40, seed: 5, hr: 72, rsa: 0.1 });
+  const { okAt } = stream(sig, { ledAt: [[15, 1.4, 1.2], [25, 0.6, 0.7]] });
+  const { gap, count } = maxGap(okAt, 12);
+  assert.ok(count > 25 && gap < 1.6, `박동 ${count}개, 최대 끊김 ${gap.toFixed(1)}초`);
+});
+
+test('전송 중 글자가 빠진 줄이 있어도 끊기지 않아요', () => {
+  const sig = realppg({ seconds: 40, seed: 6, hr: 72, rsa: 0.1 });
+  const { okAt } = stream(sig, { corrupt: [14.03, 18.51, 22.77, 27.2, 31.66] });
+  const { gap, count } = maxGap(okAt, 12);
+  assert.ok(count > 25 && gap < 1.6, `박동 ${count}개, 최대 끊김 ${gap.toFixed(1)}초`);
+});
+
+test('적색 LED가 고장 나 잡음만 나와도 적외선 채널로 맥박을 보여줘요', () => {
+  for (const seed of [1, 2]) {
+    const sig = realppg({ seconds: 90, seed, hr: 60, rsa: 0.18 }), r = rng(seed);
+    const p = new PulseProcessor(100, 3);
+    p.setFinger(true);
+    let lastOk = -1e9, ok = 0, tot = 0, redActive = 0;
+    for (let n = 0; n < sig.ir.length; n++) {
+      const b = p.push(sig.ir[n], 1500 + 30 * (r() - 0.5));
+      if (b && b.ok) lastOk = b.idx;
+      if (n >= 1200) { tot++; if (p.pulseOk && n - lastOk < 350) ok++; if (p.active === 'red') redActive++; }
+    }
+    assert.ok(ok / tot >= 0.85, `맥박 인정 시간 ${(ok / tot * 100).toFixed(0)}%`);
+    assert.ok(redActive / tot < 0.05, `고장 난 적색 채널을 ${(redActive / tot * 100).toFixed(0)}% 동안 썼어요`);
+  }
+});
+
+test('아주 강한 맥박(관류지수 8%)도 움직임으로 오해하지 않아요', () => {
+  for (const seed of [1, 2]) {
+    const f = okFraction(realppg({ seconds: 60, seed, hr: 75, pi: 0.08, piRed: 0.08 }));
+    assert.ok(f >= 0.85, `맥박 인정 시간 ${(f * 100).toFixed(0)}%`);
+  }
+});
+
+test('이완기 물결이 커도 박동을 두 번 세지 않고 맞는 BPM을 보여줘요', () => {
+  for (const seed of [1, 2, 3]) {
+    const sig = realppg({ seconds: 90, seed, hr: 65, dic: 0.5, dicDelay: 0.34, sysFall: 0.085, rsa: 0.08, drift: 0.08 });
+    const p = new PulseProcessor(100, 3);
+    p.setFinger(true);
+    let shown = 0, wrong = 0;
+    for (let n = 0; n < sig.ir.length; n++) {
+      const b = p.push(sig.ir[n], sig.red[n]);
+      if (!b || !b.ok || b.rr == null || n < 1500) continue;
+      const t = b.idx / 100, i = sig.beats.findIndex(x => Math.abs(x - t) < 0.2);
+      if (i < 1) continue;
+      shown++;
+      const trr = (sig.beats[i] - sig.beats[i - 1]) * 100;
+      if (Math.abs(b.rr - trr) > 0.2 * trr) wrong++;
+    }
+    assert.ok(shown > 40, `보여 준 박동 ${shown}개`);
+    assert.ok(wrong / shown <= 0.1, `틀린 BPM ${(wrong / shown * 100).toFixed(0)}%`);
+  }
 });

@@ -32,7 +32,7 @@ function realppg(o = {}) {
   const ampVar = o.ampVar ?? 0.08, ampResp = o.ampResp ?? 0.12, riiv = o.riiv ?? 0.004;
   const drift = o.drift ?? 0.1, driftPeriod = o.driftPeriod ?? 6;
   const dcIr = o.dcIr ?? 150000, dcRed = o.dcRed ?? 130000, noise = o.noise ?? 25;
-  const sysFall = o.sysFall ?? 0.085, sysRise = o.sysRise ?? 0.05;  // seconds
+  const sysFall = o.sysFall ?? 0.085, sysRise = o.sysRise ?? 0.05, dicDelay = o.dicDelay ?? 0.24;  // seconds
   // respiration phase (breathing rate wanders)
   const respPh = new Float64Array(N + 1);
   { let ph = r() * 2 * Math.PI, f = fresp0; for (let n = 0; n <= N; n++) { respPh[n] = ph; if (n % fs === 0) f = fresp0 * (1 + 0.15 * gauss(r) * 0.5); ph += 2 * Math.PI * f / fs; } }
@@ -85,7 +85,7 @@ function realppg(o = {}) {
   const ir = new Float64Array(N), red = new Float64Array(N);
   let bi = 0;
   // normalise pulse shape to unit peak-to-trough approx
-  const shape = tau => ag(tau, 0.0 + sysRise * 2.6, sysRise, sysFall) + dic * ag(tau, sysRise * 2.6 + 0.24, 0.045, 0.16);
+  const shape = tau => ag(tau, 0.0 + sysRise * 2.6, sysRise, sysFall) + dic * ag(tau, sysRise * 2.6 + dicDelay, 0.045, 0.16);
   let pk = 0; for (let k = 0; k < 120; k++) pk = Math.max(pk, shape(k / 100));
   for (let n = 0; n < N; n++) {
     const tt = n / fs;

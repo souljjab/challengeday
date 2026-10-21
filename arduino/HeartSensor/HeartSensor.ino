@@ -16,7 +16,8 @@
       2) 18비트 해상도 + 4회 평균 : 400번/초로 재서 4개씩 평균 → 100번/초,
          잡음이 줄어든 신호를 보내요.
       3) 손가락 감지 : 반사되는 빛의 양으로 손가락이 올라왔는지 판단해요.
-      4) 배선이 흔들려 I2C 통신이 멈춰도 스스로 다시 연결해요.
+      4) 배선이 흔들려 I2C 통신이 잠깐 실패해도 무시하고(0.2초까지) 계속 재요.
+         정말로 센서가 빠지면 스스로 다시 연결해요.
 
   ■ 시리얼 출력 (115200 baud)
       "적외선(IR),적색(Red)"         ← 1초에 100줄. 시리얼 플로터로도 볼 수 있어요.
@@ -40,6 +41,10 @@ const uint32_t TARGET_LEVEL = 150000;  // LED 자동 조절 목표 (최대 26214
 const uint32_t TARGET_LOW   = 90000;   // 이 범위 안이면 LED를 건드리지 않아요
 const uint32_t TARGET_HIGH  = 220000;
 const uint32_t SAT_LEVEL    = 250000;  // 이보다 크면 빛이 너무 세서 신호가 잘려요
+// 손가락이 자리 잡은 뒤(2초)에는 이 넓은 범위를 0.6초 넘게 벗어날 때만 LED를 다시 맞춰요.
+// 누르는 힘이 조금씩 바뀔 때마다 밝기를 바꾸면 그때마다 신호가 살짝 흔들리기 때문이에요.
+const uint32_t HOLD_LOW     = 40000;
+const uint32_t HOLD_HIGH    = 235000;
 
 const uint8_t PA_START       = 64;     // 시작 LED 전류 (64 × 0.2mA = 12.8mA)
 const uint8_t PA_MIN         = 1;
@@ -52,6 +57,8 @@ const uint16_t FINGER_ON  = 150;
 const uint16_t FINGER_OFF = 80;
 
 const uint8_t AGC_WINDOW = 20;         // 20샘플(0.2초)마다 LED 밝기를 점검
+const unsigned long POLL_US = 10000;   // 10ms마다 FIFO를 읽어요 (FIFO는 0.32초분까지 담아 둬요)
+const uint8_t MAX_I2C_FAILS = 20;      // 연속 20번(0.2초) 실패해야 센서가 빠진 것으로 봐요
 
 // ───────── MAX30102 레지스터 ─────────
 const uint8_t MAX_ADDR = 0x57;
@@ -76,16 +83,21 @@ const uint8_t SPO2_CONFIG = 0x60 | 0x0C | 0x03;  // ADC 16384nA, 400sps, 411us(1
 
 // ───────── 상태 ─────────
 bool sensorOk = false;
+bool everOk = false;          // 한 번이라도 센서가 연결됐었는지 (다시 연결할 때 LED 밝기를 그대로 둬요)
 bool autoLed = true;
+bool ledPending = false;      // LED 설정을 아직 센서에 못 썼으면 다음에 다시 써요
 bool finger = false;
 uint8_t fingerCount = 0;
+unsigned long fingerSince = 0;
+uint8_t outIr = 0, outRed = 0;  // 넓은 범위를 연속으로 벗어난 점검 횟수
 uint8_t paIr = PA_START, paRed = PA_START;
 uint16_t reflectance = 0;
 
 uint32_t sumIr = 0, sumRed = 0, maxIr = 0, maxRed = 0;
 uint8_t agcCount = 0, agcSkip = 0;
 
-unsigned long lastStat = 0, lastRetry = 0;
+unsigned long lastStat = 0, lastRetry = 0, lastPoll = 0;
+uint8_t i2cFails = 0;
 bool statDirty = true;
 
 char cmdBuf[10];
@@ -109,8 +121,9 @@ bool readReg(uint8_t reg, uint8_t &val) {
 }
 
 bool applyLed() {
+  if (!(writeReg(REG_LED1_PA, paRed) && writeReg(REG_LED2_PA, paIr))) return false;
   statDirty = true;
-  return writeReg(REG_LED1_PA, paRed) && writeReg(REG_LED2_PA, paIr);
+  return true;
 }
 
 void resetAgc() {
@@ -127,7 +140,7 @@ bool initSensor() {
     return false;
   }
   readReg(REG_REV_ID, rev);
-  if (autoLed) paIr = paRed = PA_START;
+  if (autoLed && !everOk) paIr = paRed = PA_START;   // 다시 연결할 때는 맞춰 둔 밝기를 그대로 써요
 
   if (!writeReg(REG_MODE_CONFIG, 0x40)) return false;  // 소프트 리셋
   for (uint8_t i = 0; i < 100; i++) {
@@ -144,8 +157,9 @@ bool initSensor() {
          && writeReg(REG_FIFO_WR_PTR, 0) && writeReg(REG_OVF_COUNTER, 0) && writeReg(REG_FIFO_RD_PTR, 0);
   if (!ok) return false;
 
-  finger = false;
-  fingerCount = 0;
+  if (!everOk) { finger = false; fingerCount = 0; }
+  everOk = true;
+  ledPending = false;
   resetAgc();
   Serial.print(F("#OK MAX30102 rev="));
   Serial.println(rev);
@@ -199,17 +213,31 @@ void runAgc() {
   } else {
     fingerCount = 0;
   }
-  if (was != finger) statDirty = true;
+  if (was != finger) {
+    statDirty = true;
+    fingerSince = millis();
+    outIr = outRed = 0;
+  }
 
   if (agcSkip) { agcSkip--; return; }                // LED를 막 바꿨으면 한 번 쉬어요
   if (!autoLed) return;
   uint8_t cap = finger ? PA_MAX : PA_NOFINGER_MAX;
-  uint8_t nIr = adjustPa(paIr, meanIr, peakIr, cap);
-  uint8_t nRed = adjustPa(paRed, meanRed, peakRed, cap);
+  uint8_t nIr, nRed;
+  if (finger && millis() - fingerSince > 2000 && paIr <= cap && paRed <= cap) {
+    // 자리 잡은 뒤: 빛이 넘치면 바로, 넓은 범위를 0.6초(3번) 넘게 벗어나면 다시 맞춰요
+    outIr = (meanIr < HOLD_LOW || meanIr > HOLD_HIGH) ? outIr + 1 : 0;
+    outRed = (meanRed < HOLD_LOW || meanRed > HOLD_HIGH) ? outRed + 1 : 0;
+    nIr = (peakIr >= SAT_LEVEL || outIr >= 3) ? adjustPa(paIr, meanIr, peakIr, cap) : paIr;
+    nRed = (peakRed >= SAT_LEVEL || outRed >= 3) ? adjustPa(paRed, meanRed, peakRed, cap) : paRed;
+  } else {
+    nIr = adjustPa(paIr, meanIr, peakIr, cap);
+    nRed = adjustPa(paRed, meanRed, peakRed, cap);
+  }
   if (nIr != paIr || nRed != paRed) {
     paIr = nIr;
     paRed = nRed;
-    if (!applyLed()) sensorOk = false;
+    outIr = outRed = 0;
+    if (!applyLed()) ledPending = true;              // 통신이 잠깐 실패하면 다음에 다시 써요
     agcSkip = 1;
   }
 }
@@ -243,8 +271,12 @@ uint32_t read18() {
 
 // FIFO에 쌓인 샘플을 모두 읽어요. I2C 오류면 false.
 bool readFifo() {
-  uint8_t wr, rd, ovf;
-  if (!readReg(REG_OVF_COUNTER, ovf) || !readReg(REG_FIFO_WR_PTR, wr) || !readReg(REG_FIFO_RD_PTR, rd)) return false;
+  // 쓰기 위치·넘친 수·읽기 위치(0x04~0x06)를 한 번에 읽어야 세 값이 서로 어긋나지 않아요
+  Wire.beginTransmission(MAX_ADDR);
+  Wire.write(REG_FIFO_WR_PTR);
+  if (Wire.endTransmission(false) != 0) return false;
+  if (Wire.requestFrom(MAX_ADDR, (uint8_t)3) != 3) return false;
+  uint8_t wr = Wire.read(), ovf = Wire.read(), rd = Wire.read();
   uint8_t n = (wr - rd) & 0x1F;
   if (ovf) {
     if (n == 0) n = 32;
@@ -300,7 +332,7 @@ void runCommand() {
     if (v > 255) v = 255;
     autoLed = false;
     paIr = paRed = (uint8_t)v;
-    if (sensorOk && !applyLed()) sensorOk = false;
+    if (sensorOk && !applyLed()) ledPending = true;
     agcSkip = 1;
   } else if (c == 'R' || c == 'r') {
     sensorOk = false;
@@ -327,7 +359,7 @@ void readCommands() {
 void setup() {
   Serial.begin(BAUD);
   Wire.begin();
-  Wire.setClock(400000);
+  Wire.setClock(100000);       // 값싼 모듈·긴 점퍼선에서도 안정적인 속도 (필요한 양의 10배 여유)
   enableWireTimeout(Wire, 0);  // 배선이 흔들려 통신이 멈춰도 3ms 뒤에 풀려요
   printHello();
 }
@@ -349,12 +381,18 @@ void loop() {
     return;
   }
 
+  if (micros() - lastPoll < POLL_US) return;
+  lastPoll = micros();
   if (!readFifo()) {
+    if (++i2cFails < MAX_I2C_FAILS) return;          // 잠깐의 통신 오류는 무시하고 다음에 다시 읽어요
     Serial.println(F("#ERR SENSOR_LOST"));
     sensorOk = false;
+    i2cFails = 0;
     lastRetry = millis();
     return;
   }
+  i2cFails = 0;
+  if (ledPending && applyLed()) ledPending = false;
 
   if (statDirty || millis() - lastStat >= 500) printStat();
 }

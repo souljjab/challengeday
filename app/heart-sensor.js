@@ -95,11 +95,23 @@
     reset() { this.needInit = true; this.lastPeak = null; }
     // LED 밝기가 k배로 바뀌면 원신호도 k배가 돼요. 필터 안의 값도 k배 해 두면 처음부터 다시 할 필요가 없어요.
     rescale(k) {
-      if (this.needInit || !(k > 0) || k === 1) return;
-      for (const f of [this.hp, this.lp]) { f.s1 *= k; f.s2 *= k; }
-      this.dc *= k;
-      this.lastX *= k;
-      this.hold = 2;   // 바뀌는 순간에 걸친 샘플은 밝기가 섞여 있어서 바로 앞 값으로 대신해요
+      if (this.needInit || !(k > 0) || !isFinite(k) || k === 1) return;
+      this.gain(k);
+      // LED 전류와 실제 빛의 양이 정확히 비례하지는 않아서, 바뀐 직후 3샘플로 실제 비율을 재서 한 번 더 맞춰요.
+      // 그동안(첫 샘플은 두 밝기가 섞여 있을 수 있음)은 예상값을 대신 넣어요.
+      this.fix = { hold: this.lastX * k, post: [] };
+    }
+    gain(g) {
+      this.dc *= g;
+      for (const f of [this.hp, this.lp]) { f.s1 *= g; f.s2 *= g; }
+    }
+    // 손가락을 새로 올렸을 때: 앞사람(또는 손가락 없을 때 잡음)에서 배운 기준값을 지워요
+    forget() {
+      this.slopes = [];
+      this.amps = [];
+      this.rrs = [];
+      this.recent = [];
+      this.medSlope = this.medAmp = this.medRR = null;
     }
     markMotion(i) {
       const s = i - Math.round(0.3 * this.fs), e = i + Math.round(0.7 * this.fs);
@@ -112,11 +124,20 @@
 
     push(x) {
       const n = ++this.n, M = this.N - 1, fs = this.fs;
-      if (this.hold > 0) { this.hold--; x = this.lastX; } else this.lastX = x;
+      if (this.fix) {
+        const f = this.fix;
+        f.post.push(x);
+        if (f.post.length < 4) x = f.hold;
+        else {
+          this.fix = null;
+          const c = (f.post[1] + f.post[2] + f.post[3]) / 3 / f.hold;
+          if (c > 0.7 && c < 1.4) this.gain(c);
+        }
+      }
+      this.lastX = x;
       if (this.needInit) {
         this.needInit = false;
-        this.hold = 0;
-        this.lastX = x;
+        this.fix = null;
         this.dc = x;
         this.hp.settle(x, 0);
         this.lp.settle(0, 0);
@@ -136,8 +157,8 @@
       const sl = (v - this.y[(n - SPAN) & M]) / SPAN;  // n-SPAN/2 시점의 기울기 (‰/샘플)
       this.s[n & M] = sl;
       const zv = sl > 0 ? sl * sl : 0;
-      // 맥박으로는 나올 수 없는 크기(밝기의 8% 이상 출렁임)면 움직임으로 봐요
-      if (x >= SAT || x <= 0 || Math.abs(sl) > 8 || Math.abs(v) > 80) this.markMotion(n);
+      // 맥박으로는 나올 수 없는 크기(밝기의 8% 이상 출렁임, 아주 가파른 변화)면 움직임으로 봐요
+      if (x >= SAT || x <= 0 || Math.abs(sl) > 12 || Math.abs(v) > 80) this.markMotion(n);
 
       this.sumBeat += zv - this.z[(n - this.w2) & M];
       this.z[n & M] = zv;
@@ -240,11 +261,13 @@
       this.shapes = [];          // 박동마다 앞선 박동들과의 모양 일치도
       this.pulseOk = false;      // 진짜 맥박이 보이는지 (잡음만 있을 때 박동을 세지 않도록)
       this.okCount = 0;
+      this.restartIdx = 0;
     }
     setSensitivity(level) { for (const k in this.ch) this.ch[k].setSensitivity(level); }
     get sensitivity() { return this.ch.ir.level; }
     restart() {  // 손가락을 새로 올렸거나 신호가 끊겼을 때
       for (const k in this.ch) this.ch[k].reset();
+      this.restartIdx = this.n + 1;
       this.lastEmit = null;
       this.pulseOk = false;
       this.okCount = 0;
@@ -256,6 +279,8 @@
         this.fingerAt = this.n;
         this.segs = [];
         this.shapes = [];
+        for (const k in this.ch) this.ch[k].forget();
+        this.active = 'ir';
         this.restart();
       }
       this.finger = on;
@@ -280,48 +305,70 @@
     // 맥박은 같은 모양이 반복돼서 값이 크고, 잡음은 작아요.
     autocorr(c) {
       const fs = this.fs, step = 2, len = Math.round(3.5 * fs / step), y = c.s, M = c.N - 1;  // 기울기로 계산하면 호흡 출렁임의 영향이 적어요
-      if (c.blanking || c.n - c.blankUntil < 3.5 * fs) return { r: 0, period: null };
+      if (c.blanking || c.n - c.blankUntil < 3.5 * fs) return { r: 0, period: null, peaks: [] };
       const a = new Float64Array(len);
       let mean = 0;
       for (let i = 0; i < len; i++) { a[i] = y[(c.n - (len - 1 - i) * step) & M]; mean += a[i]; }
       mean /= len;
       for (let i = 0; i < len; i++) a[i] -= mean;
       const lo = Math.round(0.34 * fs / step), hi = Math.round(1.5 * fs / step), rs = [];
-      let best = 0;
       for (let lag = lo; lag <= hi; lag++) {
         let xy = 0, xx = 0, yy = 0;
         for (let i = 0; i + lag < len; i++) { xy += a[i] * a[i + lag]; xx += a[i] * a[i]; yy += a[i + lag] * a[i + lag]; }
-        const r = xx && yy ? xy / Math.sqrt(xx * yy) : 0;
-        rs.push(r);
-        if (r > best) best = r;
+        rs.push(xx && yy ? xy / Math.sqrt(xx * yy) : 0);
       }
+      // 양 끝이 아닌 진짜 봉우리만 봐요 (느린 출렁임 때문에 양 끝값이 커지는 경우가 있어요)
+      const peaks = [];
+      for (let i = 1; i < rs.length - 1; i++) if (rs[i] > 0 && rs[i] >= rs[i - 1] && rs[i] >= rs[i + 1]) peaks.push({ lag: (lo + i) * step, r: rs[i] });
+      let best = 0;
+      for (const p of peaks) if (p.r > best) best = p.r;
       // 두 배 주기에서도 값이 크게 나오므로, 최댓값의 85%를 넘는 첫 봉우리를 한 주기로 봐요
-      for (let i = 1; i < rs.length - 1; i++) {
-        if (rs[i] >= 0.85 * best && rs[i] >= rs[i - 1] && rs[i] >= rs[i + 1]) return { r: best, period: (lo + i) * step };
-      }
-      return { r: best, period: null };
+      const first = peaks.find(p => p.r >= 0.85 * best);
+      return { r: best, period: first ? first.lag : null, peaks };
     }
     // 진짜 맥박인지 판정해요. 사람은 숨 쉴 때마다 박동 간격이 10~20%씩 바뀌어서
     // 주기만으로는 놓치기 쉬워요. 그래서 '박동 모양이 서로 닮았는지'를 함께 봐요.
     checkPulse() {
       const c = this.ch[this.active], fs = this.fs;
       if (c.inMotion(c.n)) return;                 // 움직이는 동안에는 판정을 미뤄요
-      const { r, period } = this.autocorr(c);
+      const { r, period, peaks } = this.autocorr(c);
       this.periodicity = r;
-      const rrs = this.beats.slice(-6).map(b => b.rr).filter(v => v != null);
+      const since = this.beats.filter(b => b.idx >= this.restartIdx);
+      const rrs = since.slice(-6).map(b => b.rr).filter(v => v != null);
       const med = rrs.length >= 3 ? median(rrs) : null;
       // ① 반복 주기와 실제로 센 박동 간격이 맞음
       const periodic = r >= 0.45 && med != null && period != null && Math.abs(period - med) <= 0.15 * med;
+      if (med != null && !periodic) this.fixDoubleCount(since, med, peaks);
+      // 박동 사이에 엉뚱한 봉우리를 끼워 세면 간격이 매번 1.5배 넘게 바뀌어요 (숨 때문에는 10~20%,
+      // 조기 박동이나 한 번 놓친 박동은 한두 번만 튀어요)
+      const q = since.slice(-5).map(b => b.rr).filter(v => v != null);
+      let jumps = 0;
+      for (let i = 1; i < q.length; i++) if (q[i] > 1.45 * q[i - 1] || q[i - 1] > 1.45 * q[i]) jumps++;
+      const steady = jumps < 3;
       // ② 최근 4박동의 모양이 앞선 박동들과 닮음
       const sh = this.shapes.filter(v => c.n - v.idx < 6 * fs).slice(-4);
       this.shape = sh.length >= 4 ? median(sh.map(v => v.corr)) : null;
       const recent = this.beats.length && c.n - this.beats[this.beats.length - 1].idx < 2.5 * fs;
       const strong = c.medAmp != null && c.medAmp >= 0.4;     // 맥동이 밝기의 0.04% 이상 (세게 눌러 맥박이 없을 때 걸러요)
       const lit = c.dc >= 20000;                              // 반사광이 너무 약하면(손가락 없음) 더 엄격하게
-      const good = recent && strong && (lit ? (this.shape != null && this.shape >= 0.65) || periodic
+      const good = recent && strong && steady && (lit ? (this.shape != null && this.shape >= 0.65) || periodic
         : this.shape != null && this.shape >= 0.85 && periodic);
       if (good) { this.pulseOk = true; this.okCount = 12; }      // 한 번 인정되면 3초 동안 아니어야 해제
       else if (this.pulseOk && --this.okCount <= 0) this.pulseOk = false;
+    }
+    // 이완기 물결(중복맥)이 큰 사람은 한 박동을 두 번 셀 수 있어요. 짧은·긴 간격이 번갈아 나오고
+    // 반복 주기가 그 두 배라면, 박동 간격 기준을 진짜 주기로 바로잡아 작은 물결을 걸러 내게 해요.
+    fixDoubleCount(since, med, peaks) {
+      let r2 = 0, lag = 0;
+      for (const p of peaks) if (Math.abs(p.lag - 2 * med) <= 0.3 * med && p.r > r2) { r2 = p.r; lag = p.lag; }
+      if (r2 < 0.45) return;
+      const q = since.slice(-5).map(b => b.rr);
+      if (q.length < 5 || q.some(v => v == null)) return;
+      for (let i = 2; i < 5; i++) {
+        const d1 = q[i] - q[i - 1], d0 = q[i - 1] - q[i - 2];
+        if (d1 * d0 >= 0 || Math.abs(d1) < 0.2 * med) return;
+      }
+      for (const k in this.ch) Object.assign(this.ch[k], { rrs: [lag, lag, lag], medRR: lag });
     }
     // 박동 시각 앞 0.25초 ~ 뒤 0.3초 파형을 잘라 최근 5박동의 평균 모양과 비교해요
     recordShape(idx) {
@@ -357,12 +404,14 @@
       if (!med) return 0;
       const good = rrs.filter(r => Math.abs(r - med) < 0.2 * med).length;
       const motion = n - this.ch[k].lastMotion < 3 * fs ? 2 : 0;
-      return good - motion;
+      return good - (rrs.length - good) - motion;   // 잡음은 간격이 들쭉날쭉해서 감점돼요
     }
     chooseChannel() {
       const other = this.active === 'ir' ? 'red' : 'ir';
       if (this.n - this.lastSwitch < 5 * this.fs) return;
-      if (this.score(other) >= this.score(this.active) + 3) { this.active = other; this.lastSwitch = this.n; }
+      // LED가 고장 난 채널은 잡음만 있어도 박동처럼 보일 수 있어서, 맥박처럼 반복되는 채널로만 바꿔요
+      if (this.score(other) >= this.score(this.active) + 3
+        && this.autocorr(this.ch[other]).r >= Math.max(0.45, this.periodicity)) { this.active = other; this.lastSwitch = this.n; }
     }
     emit(b) {
       const fs = this.fs;
@@ -424,7 +473,16 @@
       if (c >= 48 && c <= 57) {
         const k = line.indexOf(',');
         const ir = k > 0 ? +line.slice(0, k) : NaN, red = k > 0 ? +line.slice(k + 1) : NaN;
-        if (!(ir >= 0 && red >= 0)) { this.badLines++; return null; }
+        if (!(ir >= 0 && red >= 0 && ir <= 262143 && red <= 262143)) { this.badLines++; return null; }
+        // 전송 중에 글자 하나가 빠지면 값이 1/10이 돼요: 자릿수가 바뀌면서 갑자기 25% 넘게 튀면 버려요
+        const dig = k * 100 + (line.length - k - 1), last = this.lastLine;
+        if (last && dig !== last.dig && (Math.abs(ir - last.ir) > 0.25 * last.ir || Math.abs(red - last.red) > 0.25 * last.red) && !this.skipped) {
+          this.skipped = true;
+          this.badLines++;
+          return null;
+        }
+        this.skipped = false;
+        this.lastLine = { dig, ir, red };
         this.goodLines++;
         const beat = proc.push(ir, red);
         return { type: 'sample', beat, display: fw.finger || proc.pulseOk ? proc.display : NaN };  // 손가락이 없으면 평평하게
@@ -812,8 +870,9 @@
             + (fw.i2c && fw.i2c !== 'none' ? ' (발견된 I2C 장치: ' + fw.i2c + ')' : '');
       } else if (!finger) {
         label = '손가락 없음'; hint = '손가락 끝을 센서 창에 가볍게 올려 주세요'; tone = 'warn';
-      } else if (this.proc.lastIr >= SAT && fw.paIr != null && fw.paIr <= 2) {
-        level = 1; label = '빛이 너무 강함'; hint = '손가락으로 센서 창을 완전히 덮어 주세요'; tone = 'warn';
+      } else if (this.proc.lastIr >= SAT && fw.paIr != null && (fw.paIr <= 2 || !fw.auto)) {
+        level = 1; label = '빛이 너무 강함'; tone = 'warn';
+        hint = fw.auto ? '손가락으로 센서 창을 완전히 덮어 주세요' : '설정에서 LED 밝기를 ‘자동’으로 바꾸거나 더 낮춰 주세요';
       } else if (!pulse) {
         level = 1; label = '신호 찾는 중'; tone = 'warn';
         hint = sum.motionAge < 2 ? '손가락을 움직이지 말고 그대로 있어 주세요'
@@ -830,7 +889,7 @@
         label = level >= 3 ? '양호' : '불안정';
         tone = level >= 3 ? 'good' : 'warn';
         hint = level === 4 ? '신호가 안정적이에요' : level === 3 ? '좋아요 · 이대로 유지해 주세요'
-          : moving ? '움직이면 오차가 생겨요 · 가만히 있어 주세요' : '박동 간격이 고르지 않아요 · 힘을 빼고 편하게 호흡하세요';
+          : moving ? '움직이면 오차가 생겨요 · 가만히 있어 주세요' : '박동이 고르게 잡히지 않아요 · 손을 책상에 대고 힘을 빼 주세요';
       }
       const connected = !!this.port;
       const badge = !this.supported ? { text: '센서 연결 불가', dot: COLOR.amber }
