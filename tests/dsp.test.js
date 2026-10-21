@@ -236,3 +236,61 @@ test('이완기 물결이 커도 박동을 두 번 세지 않고 맞는 BPM을 �
     assert.ok(wrong / shown <= 0.1, `틀린 BPM ${(wrong / shown * 100).toFixed(0)}%`);
   }
 });
+
+// ───────── 부스처럼 여러 사람이 차례로 측정할 때 ─────────
+// parts: [{ sig, finger }] 를 이어 붙여 펌웨어 형식으로 흘려보내요. finger=false 구간은 손가락 없는 잡음.
+function sequence(parts, { ovfEvery = 0 } = {}) {
+  const core = new StreamCore(3), r = rng(99), out = [];
+  core.line('#OK MAX30102 rev=3');
+  let n = 0;
+  for (const part of parts) {
+    const len = part.sig ? part.sig.ir.length : part.seconds * 100;
+    for (let i = 0; i < len; i++, n++) {
+      if (n % 50 === 0) core.line(`#STAT 100 100 ${part.sig ? 1 : 0} ${part.sig ? 800 : 20} 1`);
+      if (ovfEvery && n % (ovfEvery * 100) === 0 && n > 0) { core.line('#OVF 1'); i += 8; n += 8; continue; }
+      const ir = part.sig ? part.sig.ir[i] : 2000 + 40 * (r() - 0.5), red = part.sig ? part.sig.red[i] : 1500 + 40 * (r() - 0.5);
+      const res = core.line(`${Math.round(ir)},${Math.round(red)}`);
+      if (res && res.beat) out.push({ t: n / 100, ok: res.beat.ok, rr: res.beat.rr, part: parts.indexOf(part) });
+    }
+  }
+  return { beats: out, core };
+}
+
+test('앞사람이 손가락을 떼고 다른 사람이 올리면 새 사람의 맥박을 바로 제대로 재요', () => {
+  for (const seed of [1, 2, 3]) {
+    const A = realppg({ seconds: 30, seed, hr: 50, pi: 0.025 }), B = realppg({ seconds: 30, seed: seed + 10, hr: 110, pi: 0.006, dic: 0.6 });
+    const { beats } = sequence([{ sig: A }, { seconds: 3 }, { sig: B }]);
+    const ghost = beats.filter(b => b.part === 1 && b.ok && b.t > 31);
+    assert.strictEqual(ghost.length, 0, `손가락이 없는데 ${ghost.length}개를 박동으로 보여줬어요`);
+    const bOk = beats.filter(b => b.part === 2 && b.ok && b.rr != null);
+    const first = bOk.length ? bOk[0].t - 33 : Infinity;
+    // 약한 맥박에서 박동을 가끔 놓치는 건 있을 수 있지만, 앞사람 기준이 남아 처음부터 절반 BPM이 이어지면 안 돼요
+    const isHalf = b => b.rr > 1.6 * 100 * 60 / 110;
+    let run = 0, worst = 0;
+    for (const b of bOk.filter(b => b.t < bOk[0].t + 8)) { run = isHalf(b) ? run + 1 : 0; worst = Math.max(worst, run); }
+    const halfShare = bOk.filter(isHalf).length / bOk.length;
+    assert.ok(first < 10, `새 사람의 첫 박동까지 ${first.toFixed(1)}초`);
+    assert.ok(worst <= 1, `새 사람에게 처음부터 절반 BPM을 ${worst}번 연속으로 보여줬어요`);
+    assert.ok(halfShare <= 0.1, `절반 BPM 비율 ${(halfShare * 100).toFixed(0)}%`);
+  }
+});
+
+test('손가락을 세게 눌러 맥동이 갑자기 작아져도 곧 다시 잡아요', () => {
+  for (const seed of [1, 2]) {
+    const strong = realppg({ seconds: 30, seed, hr: 72, pi: 0.025 }), weak = realppg({ seconds: 30, seed: seed + 5, hr: 72, pi: 0.003 });
+    const { beats } = sequence([{ sig: strong }, { sig: weak }]);
+    const ok = beats.filter(b => b.part === 1 && b.ok).map(b => b.t);
+    let gap = ok.length ? ok[0] - 30 : 30;
+    for (let i = 1; i < ok.length; i++) gap = Math.max(gap, ok[i] - ok[i - 1]);
+    assert.ok(gap < 9, `맥동이 작아진 뒤 박동이 ${gap.toFixed(1)}초 동안 끊겼어요`);
+  }
+});
+
+test('샘플 몇 개가 빠져도(#OVF) 처음부터 다시 하지 않아요', () => {
+  const sig = realppg({ seconds: 60, seed: 4, hr: 72 });
+  const { beats } = sequence([{ sig }], { ovfEvery: 5 });
+  const ok = beats.filter(b => b.ok && b.t > 12).map(b => b.t);
+  let gap = 0;
+  for (let i = 1; i < ok.length; i++) gap = Math.max(gap, ok[i] - ok[i - 1]);
+  assert.ok(ok.length > 35 && gap < 3, `박동 ${ok.length}개, 최대 끊김 ${gap.toFixed(1)}초`);
+});

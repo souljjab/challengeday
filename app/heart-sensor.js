@@ -112,6 +112,7 @@
       this.rrs = [];
       this.recent = [];
       this.medSlope = this.medAmp = this.medRR = null;
+      this.rejects = { big: 0, small: 0 };
     }
     markMotion(i) {
       const s = i - Math.round(0.3 * this.fs), e = i + Math.round(0.7 * this.fs);
@@ -213,6 +214,13 @@
       for (let i = at - Math.round(0.3 * fs); i <= at; i++) lo = Math.min(lo, y[i & M]);
       for (let i = at; i <= Math.min(n, at + Math.round(0.3 * fs)); i++) hi = Math.max(hi, y[i & M]);
       const slope = s1, amp = hi - lo;
+      // 2.5초(또는 박동 2번) 넘게 박동을 하나도 인정하지 못했으면 기울기 기준이 낡은 거예요
+      // (손가락을 세게 눌러 맥동이 갑자기 작아진 경우 등) → 기준만 새로 잡아요
+      if (this.medSlope && this.rejects.small >= 2 && this.lastPeak != null && this.lastMotion < this.lastPeak
+        && at - this.lastPeak > Math.max(2.5 * fs, 2.2 * (this.medRR || 0))) {
+        this.slopes = [];
+        this.medSlope = null;
+      }
       const rc = this.recent;
       rc.push({ at, slope });
       while (rc.length && at - rc[0].at > 3 * fs) rc.shift();
@@ -253,6 +261,8 @@
       this.beats = [];
       this.finger = false;
       this.fingerAt = -1e9;
+      this.offAt = -1e9;
+      this.fingerSeen = false;
       this.lastIr = 0;
       this.lastRed = 0;
       this.periodicity = 0;      // 최근 3.5초 신호가 얼마나 규칙적으로 반복되는지 (0~1)
@@ -273,18 +283,33 @@
       this.okCount = 0;
     }
     rescaleLed(kIr, kRed) { this.ch.ir.rescale(kIr); this.ch.red.rescale(kRed); }
+    // 샘플 몇 개가 빠졌을 때(FIFO 넘침): 처음부터 다시 하지 않고 그 구간만 움직임처럼 건너뛰어요
+    gap() {
+      for (const k in this.ch) {
+        const c = this.ch[k];
+        if (!c.needInit) { c.markMotion(c.n); c.lastPeak = null; }
+      }
+      this.lastEmit = null;
+    }
     setFinger(on) {
-      // 이미 맥박을 잘 잡고 있으면 손가락 감지 신호가 깜빡여도 처음부터 다시 하지 않아요
-      if (on && !this.finger && !this.pulseOk) {
+      if (!on && this.finger) this.offAt = this.n;
+      if (on) this.fingerSeen = true;
+      // 새 손가락이면 처음부터 다시 해요. 맥박을 잡고 있던 중 손가락 감지 신호만 잠깐 깜빡인 거라면 그대로 두지만,
+      // 1.5초 넘게 떼었다 올리면 다른 사람일 수 있어서 앞 사람의 기준값을 모두 버려요
+      if (on && !this.finger && (!this.pulseOk || this.n - this.offAt >= 1.5 * this.fs)) {
         this.fingerAt = this.n;
         this.segs = [];
         this.shapes = [];
+        this.beats = [];
+        this.hist = { ir: [], red: [] };
         for (const k in this.ch) this.ch[k].forget();
         this.active = 'ir';
         this.restart();
       }
       this.finger = on;
     }
+    // 손가락을 뗀 지 1초가 넘었으면, 남은 잡음을 박동으로 보여주지 않아요
+    get lifted() { return this.fingerSeen && !this.finger && this.n - this.offAt > this.fs; }
     push(ir, red) {
       const n = ++this.n, fs = this.fs;
       this.lastIr = ir;
@@ -330,7 +355,10 @@
     // 주기만으로는 놓치기 쉬워요. 그래서 '박동 모양이 서로 닮았는지'를 함께 봐요.
     checkPulse() {
       const c = this.ch[this.active], fs = this.fs;
-      if (c.inMotion(c.n)) return;                 // 움직이는 동안에는 판정을 미뤄요
+      if (c.inMotion(c.n)) {                       // 움직이는 동안에는 판정을 미뤄요
+        if (!this.finger && this.pulseOk && --this.okCount <= 0) this.pulseOk = false;  // 손가락을 뗐으면 그래도 해제
+        return;
+      }
       const { r, period, peaks } = this.autocorr(c);
       this.periodicity = r;
       const since = this.beats.filter(b => b.idx >= this.restartIdx);
@@ -419,7 +447,7 @@
       const rr = this.lastEmit != null && b.idx - this.lastEmit < 2.2 * fs ? b.idx - this.lastEmit : null;
       this.lastEmit = b.idx;
       this.recordShape(b.idx);
-      const beat = { idx: b.idx, rr, amp: b.amp, ch: this.active, ok: this.pulseOk };
+      const beat = { idx: b.idx, rr, amp: b.amp, ch: this.active, ok: this.pulseOk && !this.lifted };
       this.beats.push(beat);
       if (this.beats.length > 40) this.beats.shift();
       return beat;
@@ -446,7 +474,7 @@
         periodicity: this.periodicity,
         shape: this.shape,
         lit: c.dc >= 20000,
-        pulseOk: this.pulseOk,
+        pulseOk: this.pulseOk && !this.lifted,
         channel: this.active
       };
     }
@@ -493,7 +521,7 @@
       else if (tag === 'OK') { fw.sensorOk = true; fw.err = ''; fw.i2c = ''; proc.restart(); }
       else if (tag === 'ERR') { fw.sensorOk = false; fw.err = parts.join(' '); }
       else if (tag === 'I2C') { fw.i2c = parts.join(' '); }
-      else if (tag === 'OVF') { proc.restart(); }
+      else if (tag === 'OVF') { proc.gap(); }
       else if (tag === 'STAT') {
         const [pi, pr, f, r, au] = parts.map(Number);
         if (fw.paIr != null && (pi !== fw.paIr || pr !== fw.paRed)) {
@@ -795,7 +823,7 @@
       else if (t - tm.t0 > 10000) {
         const fs = (n - tm.n0) / (t - tm.t0) * 1000;
         tm.fs = fs;
-        if (fs > 90 && fs < 110) tm.dt = 1000 / fs;
+        if (fs >= 85 && fs <= 115) tm.dt = 1000 / fs;
       }
       if (tm.nRef == null) { tm.nRef = n; tm.tRef = t; return; }
       const pred = tm.tRef + (n - tm.nRef) * tm.dt;
@@ -819,6 +847,7 @@
       if (!b.ok) return;  // 아직 규칙적인 맥박이 확인되지 않았어요
       const rr = b.rr != null ? b.rr * this.timing.dt : null;
       const beat = { t: this.timeOf(b.idx), rr, bpm: rr ? 60000 / rr : null, amp: b.amp, ch: b.ch };
+      if (!this.lastBeat || beat.t - this.lastBeat.t > 2500) this.rrs = [];  // 끊겼다 다시 잡히면(다른 사람일 수도) 이전 BPM은 버려요
       this.lastBeat = beat;
       if (rr) { this.rrs.push(rr); if (this.rrs.length > 5) this.rrs.shift(); }
       if (this.log.length < 50000) {
@@ -870,7 +899,7 @@
             + (fw.i2c && fw.i2c !== 'none' ? ' (발견된 I2C 장치: ' + fw.i2c + ')' : '');
       } else if (!finger) {
         label = '손가락 없음'; hint = '손가락 끝을 센서 창에 가볍게 올려 주세요'; tone = 'warn';
-      } else if (this.proc.lastIr >= SAT && fw.paIr != null && (fw.paIr <= 2 || !fw.auto)) {
+      } else if (this.proc.lastIr >= SAT && fw.paIr != null && (fw.paIr <= 2 || (!fw.auto && !pulse))) {
         level = 1; label = '빛이 너무 강함'; tone = 'warn';
         hint = fw.auto ? '손가락으로 센서 창을 완전히 덮어 주세요' : '설정에서 LED 밝기를 ‘자동’으로 바꾸거나 더 낮춰 주세요';
       } else if (!pulse) {
