@@ -1078,8 +1078,9 @@ class Component extends DCLogic {
         if (t <= gD) { const beats = g.beats.slice(); beats[g.i] = [...beats[g.i], { t, rr, bpm }]; upd.game = { ...g, beats }; }
       }
       if (s.screen === 'check' && !s.check.doneAt) {
-        const ok = !bad && now - s.check.start > 2600 && (recent.length < 3 || Math.abs(bpm - median(recent)) < 10);
-        upd.check = { ...s.check, stable: ok ? s.check.stable + 1 : 0 };
+        // 숨 쉴 때마다 심박이 10~15% 오르내리는 건 정상이라, 그 정도 차이는 안정된 박동으로 봐요
+        const ok = !bad && now - s.check.start > 2600 && (recent.length < 3 || Math.abs(bpm - median(recent)) < Math.max(10, 0.15 * median(recent)));
+        upd.check = { ...s.check, stable: ok ? s.check.stable + 1 : Math.max(0, s.check.stable - 2) };
       }
       return upd;
     });

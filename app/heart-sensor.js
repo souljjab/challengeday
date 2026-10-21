@@ -93,6 +93,14 @@
       Object.assign(this, SENSITIVITY[this.level - 1]);
     }
     reset() { this.needInit = true; this.lastPeak = null; }
+    // LED 밝기가 k배로 바뀌면 원신호도 k배가 돼요. 필터 안의 값도 k배 해 두면 처음부터 다시 할 필요가 없어요.
+    rescale(k) {
+      if (this.needInit || !(k > 0) || k === 1) return;
+      for (const f of [this.hp, this.lp]) { f.s1 *= k; f.s2 *= k; }
+      this.dc *= k;
+      this.lastX *= k;
+      this.hold = 2;   // 바뀌는 순간에 걸친 샘플은 밝기가 섞여 있어서 바로 앞 값으로 대신해요
+    }
     markMotion(i) {
       const s = i - Math.round(0.3 * this.fs), e = i + Math.round(0.7 * this.fs);
       if (s <= this.motion[1]) this.motion[1] = Math.max(this.motion[1], e);
@@ -104,8 +112,11 @@
 
     push(x) {
       const n = ++this.n, M = this.N - 1, fs = this.fs;
+      if (this.hold > 0) { this.hold--; x = this.lastX; } else this.lastX = x;
       if (this.needInit) {
         this.needInit = false;
+        this.hold = 0;
+        this.lastX = x;
         this.dc = x;
         this.hp.settle(x, 0);
         this.lp.settle(0, 0);
@@ -223,21 +234,30 @@
       this.fingerAt = -1e9;
       this.lastIr = 0;
       this.lastRed = 0;
-      this.periodicity = 0;      // 최근 4초 신호가 얼마나 규칙적으로 반복되는지 (0~1)
+      this.periodicity = 0;      // 최근 3.5초 신호가 얼마나 규칙적으로 반복되는지 (0~1)
+      this.shape = null;         // 최근 박동들의 모양이 서로 얼마나 닮았는지 (0~1)
+      this.segs = [];            // 최근 박동 모양 (정규화)
+      this.shapes = [];          // 박동마다 앞선 박동들과의 모양 일치도
       this.pulseOk = false;      // 진짜 맥박이 보이는지 (잡음만 있을 때 박동을 세지 않도록)
       this.okCount = 0;
     }
     setSensitivity(level) { for (const k in this.ch) this.ch[k].setSensitivity(level); }
     get sensitivity() { return this.ch.ir.level; }
-    restart() {  // 손가락을 새로 올렸거나 LED 밝기가 바뀌었을 때
+    restart() {  // 손가락을 새로 올렸거나 신호가 끊겼을 때
       for (const k in this.ch) this.ch[k].reset();
       this.lastEmit = null;
       this.pulseOk = false;
       this.okCount = 0;
     }
+    rescaleLed(kIr, kRed) { this.ch.ir.rescale(kIr); this.ch.red.rescale(kRed); }
     setFinger(on) {
-      if (on && !this.finger) { this.fingerAt = this.n; this.restart(); }
-      if (!on) this.lastEmit = null;
+      // 이미 맥박을 잘 잡고 있으면 손가락 감지 신호가 깜빡여도 처음부터 다시 하지 않아요
+      if (on && !this.finger && !this.pulseOk) {
+        this.fingerAt = this.n;
+        this.segs = [];
+        this.shapes = [];
+        this.restart();
+      }
       this.finger = on;
     }
     push(ir, red) {
@@ -281,22 +301,54 @@
       }
       return { r: best, period: null };
     }
+    // 진짜 맥박인지 판정해요. 사람은 숨 쉴 때마다 박동 간격이 10~20%씩 바뀌어서
+    // 주기만으로는 놓치기 쉬워요. 그래서 '박동 모양이 서로 닮았는지'를 함께 봐요.
     checkPulse() {
-      const c = this.ch[this.active];
+      const c = this.ch[this.active], fs = this.fs;
       if (c.inMotion(c.n)) return;                 // 움직이는 동안에는 판정을 미뤄요
       const { r, period } = this.autocorr(c);
       this.periodicity = r;
       const rrs = this.beats.slice(-6).map(b => b.rr).filter(v => v != null);
       const med = rrs.length >= 3 ? median(rrs) : null;
-      // 반복 주기와 실제로 센 박동 간격이 맞아야 진짜 맥박으로 인정해요
-      const match = med != null && period != null && Math.abs(period - med) <= 0.15 * med;
-      if (this.pulseOk) {
-        this.okCount = r < 0.25 || !match ? this.okCount - 1 : 3;
-        if (this.okCount <= 0) this.pulseOk = false;
-      } else if (r >= 0.45 && match) {
-        this.pulseOk = true;
-        this.okCount = 3;
+      // ① 반복 주기와 실제로 센 박동 간격이 맞음
+      const periodic = r >= 0.45 && med != null && period != null && Math.abs(period - med) <= 0.15 * med;
+      // ② 최근 4박동의 모양이 앞선 박동들과 닮음
+      const sh = this.shapes.filter(v => c.n - v.idx < 6 * fs).slice(-4);
+      this.shape = sh.length >= 4 ? median(sh.map(v => v.corr)) : null;
+      const recent = this.beats.length && c.n - this.beats[this.beats.length - 1].idx < 2.5 * fs;
+      const strong = c.medAmp != null && c.medAmp >= 0.4;     // 맥동이 밝기의 0.04% 이상 (세게 눌러 맥박이 없을 때 걸러요)
+      const lit = c.dc >= 20000;                              // 반사광이 너무 약하면(손가락 없음) 더 엄격하게
+      const good = recent && strong && (lit ? (this.shape != null && this.shape >= 0.65) || periodic
+        : this.shape != null && this.shape >= 0.85 && periodic);
+      if (good) { this.pulseOk = true; this.okCount = 12; }      // 한 번 인정되면 3초 동안 아니어야 해제
+      else if (this.pulseOk && --this.okCount <= 0) this.pulseOk = false;
+    }
+    // 박동 시각 앞 0.25초 ~ 뒤 0.3초 파형을 잘라 최근 5박동의 평균 모양과 비교해요
+    recordShape(idx) {
+      const c = this.ch[this.active], y = c.y, M = c.N - 1, fs = this.fs;
+      const pre = Math.round(0.25 * fs), L = pre + Math.round(0.3 * fs) + 1, i0 = Math.round(idx) - pre;
+      const seg = new Float64Array(L);
+      let m = 0;
+      for (let k = 0; k < L; k++) { seg[k] = y[(i0 + k) & M]; m += seg[k]; }
+      m /= L;
+      let ss = 0;
+      for (let k = 0; k < L; k++) { seg[k] -= m; ss += seg[k] * seg[k]; }
+      const sd = Math.sqrt(ss) || 1;
+      for (let k = 0; k < L; k++) seg[k] /= sd;
+      if (this.segs.length >= 3 && this.segs[0].length === L) {
+        const t = new Float64Array(L);
+        for (const g of this.segs) for (let k = 0; k < L; k++) t[k] += g[k];
+        let tm = 0, ts = 0, dot = 0;
+        for (let k = 0; k < L; k++) tm += t[k];
+        tm /= L;
+        for (let k = 0; k < L; k++) { t[k] -= tm; ts += t[k] * t[k]; }
+        ts = Math.sqrt(ts) || 1;
+        for (let k = 0; k < L; k++) dot += seg[k] * t[k] / ts;
+        this.shapes.push({ idx, corr: dot });
+        if (this.shapes.length > 10) this.shapes.shift();
       }
+      this.segs.push(seg);
+      if (this.segs.length > 5) this.segs.shift();
     }
     score(k) {  // 최근 8초 동안 고르게 잡힌 박동 수
       const h = this.hist[k], n = this.n, fs = this.fs;
@@ -317,6 +369,7 @@
       if (this.lastEmit != null && b.idx - this.lastEmit < 0.28 * fs) return null;
       const rr = this.lastEmit != null && b.idx - this.lastEmit < 2.2 * fs ? b.idx - this.lastEmit : null;
       this.lastEmit = b.idx;
+      this.recordShape(b.idx);
       const beat = { idx: b.idx, rr, amp: b.amp, ch: this.active, ok: this.pulseOk };
       this.beats.push(beat);
       if (this.beats.length > 40) this.beats.shift();
@@ -342,13 +395,62 @@
         sinceFinger: (n - this.fingerAt) / fs,
         settling: c.blanking,
         periodicity: this.periodicity,
+        shape: this.shape,
+        lit: c.dc >= 20000,
         pulseOk: this.pulseOk,
         channel: this.active
       };
     }
   }
 
-  const api = { PpgChannel, PulseProcessor, SENSITIVITY, FS, SAT, BAUD };
+  // ───────── 아두이노가 보낸 한 줄 해석 (브라우저·Node 공용) ─────────
+  // 데이터 줄 "IR,Red"는 신호 처리기로 보내고, "#..." 상태 줄로 LED·손가락 상태를 따라가요.
+  class StreamCore {
+    constructor(sensitivity = 3) {
+      this.proc = new PulseProcessor(FS, sensitivity);
+      this.fw = { version: '', sensorOk: false, err: '', i2c: '', paIr: null, paRed: null, finger: false, refl: null, auto: true };
+      this.badLines = 0;
+      this.goodLines = 0;
+    }
+    // 반환: { type: 'sample', beat, display } | { type: 'status', tag } | null(알 수 없는 줄)
+    line(line) {
+      let c = line.charCodeAt(0);
+      if (c !== 35 && !(c >= 48 && c <= 57)) {
+        // 아두이노가 재시작할 때 줄 앞에 깨진 글자가 붙을 수 있어요
+        const h = line.indexOf('#');
+        if (h > 0) { line = line.slice(h); c = 35; }
+      }
+      const proc = this.proc, fw = this.fw;
+      if (c >= 48 && c <= 57) {
+        const k = line.indexOf(',');
+        const ir = k > 0 ? +line.slice(0, k) : NaN, red = k > 0 ? +line.slice(k + 1) : NaN;
+        if (!(ir >= 0 && red >= 0)) { this.badLines++; return null; }
+        this.goodLines++;
+        const beat = proc.push(ir, red);
+        return { type: 'sample', beat, display: fw.finger || proc.pulseOk ? proc.display : NaN };  // 손가락이 없으면 평평하게
+      }
+      if (c !== 35) { this.badLines++; return null; }  // '#'
+      const parts = line.slice(1).split(/\s+/), tag = parts.shift();
+      if (tag === 'HELLO') { fw.version = parts.join(' '); }
+      else if (tag === 'OK') { fw.sensorOk = true; fw.err = ''; fw.i2c = ''; proc.restart(); }
+      else if (tag === 'ERR') { fw.sensorOk = false; fw.err = parts.join(' '); }
+      else if (tag === 'I2C') { fw.i2c = parts.join(' '); }
+      else if (tag === 'OVF') { proc.restart(); }
+      else if (tag === 'STAT') {
+        const [pi, pr, f, r, au] = parts.map(Number);
+        if (fw.paIr != null && (pi !== fw.paIr || pr !== fw.paRed)) {
+          // LED 밝기가 바뀌면 처음부터 다시 하지 않고 밝기 비율만큼 보정해요
+          if (fw.paIr > 0 && fw.paRed > 0 && pi > 0 && pr > 0) proc.rescaleLed(pi / fw.paIr, pr / fw.paRed);
+          else proc.restart();
+        }
+        Object.assign(fw, { paIr: pi, paRed: pr, refl: r, auto: !!au, sensorOk: true, err: '' });
+        if (!!f !== fw.finger) { fw.finger = !!f; proc.setFinger(!!f); }
+      }
+      return { type: 'status', tag };
+    }
+  }
+
+  const api = { PpgChannel, PulseProcessor, StreamCore, SENSITIVITY, FS, SAT, BAUD };
   if (typeof module === 'object' && module.exports) module.exports = api;
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
 
@@ -468,6 +570,7 @@
       this.sendChain = Promise.resolve();
       this.waveBuf = new WaveBuffer();
       this.log = [];
+      this.raw = [];             // 최근 원신호 줄 (문제 분석용 '원신호 저장')
       this.resetStream();
       this.status = this.buildStatus();
       setInterval(() => this.tick(), 250);
@@ -482,12 +585,9 @@
       }
     }
     resetStream() {
-      this.proc = new PulseProcessor(FS, this.settings.sensitivity);
-      this.fw = { version: '', sensorOk: false, err: '', i2c: '', paIr: null, paRed: null, finger: false, refl: null, auto: true };
+      this.core = new StreamCore(this.settings.sensitivity);
       this.lineBuf = '';
       this.lastData = 0;
-      this.badLines = 0;
-      this.goodLines = 0;
       this.wavePending = [];
       this.beatPending = [];
       this.lastFlush = 0;
@@ -605,42 +705,29 @@
       while ((i = this.lineBuf.indexOf('\n')) >= 0) {
         const line = this.lineBuf.slice(0, i).trim();
         this.lineBuf = this.lineBuf.slice(i + 1);
-        if (line) this.onLine(line, t);
+        if (!line) continue;
+        this.raw.push(line);
+        if (this.raw.length > 15000) this.raw.splice(0, this.raw.length - 12000);  // 약 2분
+        this.onLine(line, t);
       }
       this.flush(t, false);
     }
+    get proc() { return this.core.proc; }
+    get fw() { return this.core.fw; }
+    get badLines() { return this.core.badLines; }
+    get goodLines() { return this.core.goodLines; }
     onLine(line, t) {
-      let c = line.charCodeAt(0);
-      if (c !== 35 && !(c >= 48 && c <= 57)) {
-        // 아두이노가 재시작할 때 줄 앞에 깨진 글자가 붙을 수 있어요
-        const h = line.indexOf('#');
-        if (h > 0) { line = line.slice(h); c = 35; }
-      }
-      if (c >= 48 && c <= 57) {
-        const k = line.indexOf(',');
-        const ir = k > 0 ? +line.slice(0, k) : NaN, red = k > 0 ? +line.slice(k + 1) : NaN;
-        if (!(ir >= 0 && red >= 0)) { this.badLines++; return; }
-        this.goodLines++;
+      const r = this.core.line(line);
+      if (!r) return;
+      if (r.type === 'sample') {
         this.lastData = t;
         if (this.conn !== 'ok') { this.conn = 'ok'; this.statusDirty = true; }
-        const b = this.proc.push(ir, red);
-        this.wavePending.push(this.fw.finger || this.proc.pulseOk ? this.proc.display : NaN);  // 손가락이 없으면 평평하게
-        if (b) this.beatPending.push(b);
+        this.wavePending.push(r.display);
+        if (r.beat) this.beatPending.push(r.beat);
         return;
       }
-      if (c !== 35) { this.badLines++; return; }  // '#'
-      const parts = line.slice(1).split(/\s+/), tag = parts.shift(), fw = this.fw;
-      if (tag === 'HELLO') { fw.version = parts.join(' '); this.syncFirmware(); }
-      else if (tag === 'OK') { fw.sensorOk = true; fw.err = ''; fw.i2c = ''; this.proc.restart(); }
-      else if (tag === 'ERR') { fw.sensorOk = false; fw.err = parts.join(' '); }
-      else if (tag === 'I2C') { fw.i2c = parts.join(' '); }
-      else if (tag === 'OVF') { this.proc.restart(); this.timing.n0 = null; }
-      else if (tag === 'STAT') {
-        const [pi, pr, f, r, au] = parts.map(Number);
-        if (fw.paIr != null && (pi !== fw.paIr || pr !== fw.paRed)) this.proc.restart();
-        Object.assign(fw, { paIr: pi, paRed: pr, refl: r, auto: !!au, sensorOk: true, err: '' });
-        if (!!f !== fw.finger) { fw.finger = !!f; this.proc.setFinger(!!f); this.statusDirty = true; }
-      }
+      if (r.tag === 'HELLO') this.syncFirmware();
+      if (r.tag === 'OVF') this.timing.n0 = null;
       this.statusDirty = true;
     }
     // 샘플 번호 → 실제 시각. 시리얼은 몇 개씩 몰려서 오므로, 도착 시각 중 가장 이른 것을 기준으로 잡아요.
@@ -793,6 +880,22 @@
       this.syncFirmware();
       this.update();
     }
+    // 최근 약 2분 동안 아두이노가 보낸 줄을 그대로 저장해요. tools/replay.js 로 다시 분석할 수 있어요.
+    exportRaw() {
+      const pad = v => String(v).padStart(2, '0'), d = new Date(), st = this.status;
+      const head = [`# heart-sensor raw ${d.toISOString()}`, `# settings ${JSON.stringify(this.settings)}`,
+        `# status ${st.conn} ${st.label} fs=${this.timing.fs ? this.timing.fs.toFixed(2) : '?'} ua=${navigator.userAgent}`];
+      this.download(head.concat(this.raw).join('\n') + '\n', 'text/plain',
+        `원신호_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.txt`);
+    }
+    download(text, type, name) {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([text], { type }));
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    }
     exportCsv() {
       const pad = v => String(v).padStart(2, '0');
       const fmt = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
@@ -802,12 +905,8 @@
           b.ch === 'ir' ? 'IR' : 'Red', b.pa != null ? (b.pa * 0.2).toFixed(1) : '', b.sens, b.level]);
       }
       const d = new Date();
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob(['﻿' + rows.map(r => r.join(',')).join('\r\n')], { type: 'text/csv' }));
-      a.download = `심박기록_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+      this.download('\uFEFF' + rows.map(r => r.join(',')).join('\r\n'), 'text/csv',
+        `심박기록_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`);
     }
     openPanel() {
       if (!this.panel) this.panel = new Panel(this);
@@ -906,6 +1005,9 @@
     <div class="hsp-row"><div style="font-size:14px;font-weight:600" data-f="logCount"></div>
       <div style="display:flex;gap:6px"><button class="hsp-btn ghost" data-a="clear">지우기</button><button class="hsp-btn" data-a="csv">CSV 저장</button></div></div>
     <div class="hsp-note">센서로 잡은 박동의 시각·BPM·RR 간격·신호 품질을 엑셀에서 열 수 있는 파일로 저장해요.</div>
+    <div class="hsp-row" style="margin-top:14px;padding-top:12px;border-top:1px solid #EEF0F3"><div style="font-size:14px;font-weight:600">원신호 (최근 2분)</div>
+      <button class="hsp-btn ghost" data-a="raw">원신호 저장</button></div>
+    <div class="hsp-note">측정이 잘 안 될 때 손가락을 올린 채 30초 이상 기다린 뒤 저장해서 개발자에게 보내 주세요. 센서가 보낸 값을 그대로 담고 있어서 원인을 찾을 수 있어요.</div>
   </div>
   <div class="hsp-note" style="text-align:center" data-f="foot"></div>
 </div>`;
@@ -924,6 +1026,7 @@
         else if (act === 'led-auto') h.setLed(true);
         else if (act === 'led-manual') h.setLed(false, h.fw.paIr || h.settings.led);
         else if (act === 'csv') h.exportCsv();
+        else if (act === 'raw') h.exportRaw();
         else if (act === 'clear') { h.log = []; h.update(); }
       });
       this.f.ledRange.addEventListener('input', e => this.hub.setLed(false, +e.target.value));

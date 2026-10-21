@@ -20,7 +20,8 @@
         let out = '';
         while (n < target) {
           const t = n / 100;
-          if (t >= nextBeat) { beats.push(nextBeat); nextBeat += 60 / fake.hr * (1 + 0.04 * Math.sin(t / 0.7) + 0.02 * rnd()); }
+          // 숨 쉴 때마다(4초 주기) 박동 간격이 ±12% 출렁이는 실제 사람처럼
+          if (t >= nextBeat) { beats.push(nextBeat); nextBeat += 60 / fake.hr * (1 - 0.12 * Math.sin(2 * Math.PI * 0.25 * t) + 0.02 * rnd()); }
           beats = beats.filter(b => t - b < 1.5);
           let ac = 0;
           for (const b of beats) { const d = t - b; ac += Math.exp(-0.5 * ((d - 0.2) / 0.06) ** 2) + 0.35 * Math.exp(-0.5 * ((d - 0.45) / 0.09) ** 2); }

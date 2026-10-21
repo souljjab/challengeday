@@ -90,3 +90,81 @@ test('진짜 맥박은 7초 안에 인정돼요', () => {
     assert.ok(ok.length && ok[0].idx / 100 < 7, `첫 인정 ${ok.length ? (ok[0].idx / 100).toFixed(1) : '없음'}초`);
   }
 });
+
+// ───────── 실제 손가락에 가까운 신호 (호흡성 부정맥 등) ─────────
+const { realppg } = require('./realppg.js');
+const { StreamCore } = require('../app/heart-sensor.js');
+
+function okFraction(sig, level = 3) {
+  const p = new PulseProcessor(100, level);
+  p.setFinger(true);
+  let lastOk = -1e9, ok = 0, tot = 0;
+  for (let n = 0; n < sig.ir.length; n++) {
+    const b = p.push(sig.ir[n], sig.red[n]);
+    if (b && b.ok) lastOk = b.idx;
+    if (n >= 1000) { tot++; if (p.pulseOk && n - lastOk < 350) ok++; }
+  }
+  return ok / tot;
+}
+
+for (const o of [{ hr: 75, rsa: 0.2, fresp: 0.25 }, { hr: 95, rsa: 0.2, fresp: 0.25 }, { hr: 50, rsa: 0.2, fresp: 0.1 },
+  { hr: 70, drift: 0.2, driftPeriod: 2 }, { hr: 65, dic: 0.8, rsa: 0.15 }, { hr: 70, ectopic: 0.1 }]) {
+  test(`숨에 따라 박동 간격이 출렁여도 맥박으로 인정해요 ${JSON.stringify(o)}`, () => {
+    for (const seed of [1, 2]) {
+      const f = okFraction(realppg(Object.assign({ seconds: 60, seed }, o)));
+      assert.ok(f >= 0.8, `맥박 인정 시간 ${(f * 100).toFixed(0)}%`);
+    }
+  });
+}
+
+test('세게 눌러 맥박이 없거나 손가락이 없으면 박동을 인정하지 않아요', () => {
+  for (const [dc, sd] of [[120000, 28], [2000, 20]]) {
+    for (const level of [1, 3, 5]) {
+      const r = rng(level * 7 + dc), p = new PulseProcessor(100, level);
+      let ok = 0;
+      for (let n = 0; n < 6000; n++) {
+        let u = 0;
+        for (let k = 0; k < 6; k++) u += r();
+        const b = p.push(dc + sd * (u - 3) * 1.4, dc * 0.75 + sd * (r() - 0.5));
+        if (b && b.ok) ok++;
+      }
+      assert.ok(ok <= 2, `밝기 ${dc}, 민감도 ${level}: 잡음 ${ok}개를 박동으로 인정했어요`);
+    }
+  }
+});
+
+// 펌웨어가 보내는 줄 형식 그대로 StreamCore에 넣어요. ledAt: [[초, 배율]] 이 시각부터 LED 밝기가 배율만큼 바뀜
+function stream(sig, { ledAt = [], fingerFlicker = [] } = {}) {
+  const core = new StreamCore(3), out = { beats: [], okAt: [] };
+  let pa = 100, k = 1;
+  core.line('#HELLO HeartSensor 1.0');
+  core.line('#OK MAX30102 rev=3');
+  for (let n = 0; n < sig.ir.length; n++) {
+    const t = n / 100;
+    for (const [at, f] of ledAt) if (Math.abs(t - at) < 0.005) { pa = Math.round(pa * f); k *= f; }
+    const finger = !fingerFlicker.some(([a, b]) => t >= a && t < b);
+    if (n % 50 === 0 || ledAt.some(([at]) => Math.abs(t - at) < 0.005)) core.line(`#STAT ${pa} ${pa} ${finger ? 1 : 0} 800 1`);
+    const r = core.line(`${Math.round(sig.ir[n] * k)},${Math.round(sig.red[n] * k)}`);
+    if (r.beat) { out.beats.push(r.beat.idx / 100); if (r.beat.ok) out.okAt.push(r.beat.idx / 100); }
+  }
+  return out;
+}
+
+test('LED 밝기가 바뀌어도 처음부터 다시 하지 않고 박동을 계속 잡아요', () => {
+  const sig = realppg({ seconds: 40, seed: 3, hr: 72, rsa: 0.1 });
+  const { okAt } = stream(sig, { ledAt: [[15, 1.3], [25, 0.6]] });  // 펌웨어는 밝기를 15만 근처로 맞추므로 포화(25만)까지 가지 않는 범위
+  const after = okAt.filter(t => t > 12);
+  let gap = 0;
+  for (let i = 1; i < after.length; i++) gap = Math.max(gap, after[i] - after[i - 1]);
+  assert.ok(after.length > 25, `인정된 박동 ${after.length}개`);
+  assert.ok(gap < 1.6, `LED 변경 때 박동이 ${gap.toFixed(1)}초 끊겼어요`);
+});
+
+test('손가락 감지 신호가 잠깐 깜빡여도 맥박을 잡고 있으면 끊기지 않아요', () => {
+  const sig = realppg({ seconds: 40, seed: 4, hr: 72, rsa: 0.1 });
+  const { okAt } = stream(sig, { fingerFlicker: [[15, 15.4], [22, 22.6], [30, 30.3]] });
+  const after = okAt.filter(t => t > 12);
+  let gap = 0;
+  for (let i = 1; i < after.length; i++) gap = Math.max(gap, after[i] - after[i - 1]);
+  assert.ok(gap < 1.6, `손가락 신호가 깜빡일 때 박동이 ${gap.toFixed(1)}초 끊겼어요`);
+});
