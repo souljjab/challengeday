@@ -15,7 +15,7 @@
 <body>
 <!--
   이 파일을 Chrome 또는 Edge로 열면 돼요.
-  센서 연결은 이 창이 계속 들고 있어서, 안쪽 화면(측정 ↔ 실습)을 오가도 연결이 끊기지 않아요.
+  센서 연결은 이 창이 계속 들고 있어서, 안쪽 화면(측정 ↔ 실습 ↔ 설문)을 오가도 연결이 끊기지 않아요.
 -->
 <iframe id="page" name="heart-sensor-shell" title="심박 측정"></iframe>
 <script>
@@ -24,7 +24,7 @@
   let page = 'Heart%20Rate%20Monitor.dc.html';
   try {
     const last = sessionStorage.getItem('heartSensor.page');
-    if (last && /^Heart%20Rate%20(Monitor|Practice)\.dc\.html(#\w*)?$/.test(last)) page = last;
+    if (last && /^Heart%20Rate%20(Monitor|Practice|Survey)\.dc\.html(#\w*)?$/.test(last)) page = last;
   } catch { /* 저장 불가 환경 */ }
   frame.src = 'app/' + page;
 </script>

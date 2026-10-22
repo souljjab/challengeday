@@ -523,7 +523,10 @@
             <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em">STEP 5 · 결과</div>
             <div style="font-size:30px;font-weight:700;letter-spacing:-0.03em;margin-top:8px">실습 결과 요약</div>
           </div>
-          <a href="Heart%20Rate%20Monitor.dc.html" style="display:inline-flex;align-items:center;height:52px;padding:0 26px;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;text-decoration:none" style-hover="background:#2A313C;color:#FFFFFF">다음 참가자 시작</a>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <a href="Heart%20Rate%20Monitor.dc.html" style="display:inline-flex;align-items:center;height:52px;padding:0 22px;border:1px solid #D5D9DF;border-radius:12px;background:#FFFFFF;color:#0F1419;font-size:15px;font-weight:600;text-decoration:none" style-hover="background:#F5F6F8;color:#0F1419">다음 참가자 시작</a>
+            <a href="Heart%20Rate%20Survey.dc.html" style="display:inline-flex;align-items:center;height:52px;padding:0 26px;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;text-decoration:none" style-hover="background:#2A313C;color:#FFFFFF">설문 참여하기 →</a>
+          </div>
         </div>
 
         <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;flex-wrap:wrap;font-size:12.5px;color:#3A4350;font-weight:500">
@@ -685,6 +688,20 @@ function analyze(beats, thr) {
     if (Math.abs(d) >= 10 && b.t - lastEv > 8) { events.push({ t0: a.t, t1: b.t, d }); lastEv = b.t; }
   }
   return { beats: out, valid, avg, rrAvg, rmssd: n ? Math.sqrt(sq / n) : null, bad: out.filter(b => b.bad), events };
+}
+
+// 거짓말 탐지기 판정: 질문마다 기준 심박보다 얼마나 올랐는지 다른 질문과 비교해요
+function judgeGame(g, base, thr) {
+  const res = g.questions.map((text, i) => {
+    const A = analyze(g.beats[i], thr), after = A.valid.filter(b => b.t >= 1);
+    return { text, A, has: after.length > 0, rise: after.length ? Math.max(...after.map(b => b.s)) - base : 0 };
+  });
+  const md = median(res.map(r => r.rise));
+  res.forEach(r => { r.p = r.has ? Math.round(Math.min(97, Math.max(3, 100 / (1 + Math.exp(-((r.rise - md) / 2.2 - 0.6)))))) : 0; r.lie = r.p >= 60; });
+  const hits = res.filter((r, k) => g.truth[k] != null && r.lie === (g.truth[k] === 'lie')).length;
+  const lies = g.truth.filter(t => t === 'lie').length;
+  const fooled = res.filter((r, k) => g.truth[k] === 'lie' && !r.lie).length;
+  return { res, hits, lies, fooled };
 }
 
 function bpmChart(A, D, mode, live, refOv, refLabel) {
@@ -1177,11 +1194,32 @@ class Component extends DCLogic {
     if (s.gsub === 'q') { u.gsub = 'setup'; u.game = null; }
     return u;
   }
-  goStep = key => this.setState(s => {
-    const u = { ...this.leave(s), screen: key };
-    if (key === 'check') u.check = { start: performance.now(), stable: 0, doneAt: 0 };
-    return u;
-  });
+  goStep = key => {
+    this.setState(s => {
+      const u = { ...this.leave(s), screen: key };
+      if (key === 'check') u.check = { start: performance.now(), stable: 0, doneAt: 0 };
+      return u;
+    });
+    // 참가자 설문: 실습을 시작하면 참가 번호를 받고, 결과 화면에 오면 측정 결과를 넘겨서 설문을 열어요
+    if (!this.hs) return;
+    if (key === 'check') this.hs.command('participant', { begin: true });
+    if (key === 'summary') this.hs.command('participant', { results: this.surveyResults({ ...this.state, ...this.leave(this.state) }) });
+  };
+  surveyResults(st) {
+    const thr = this.props.anomalyThreshold ?? 45;
+    const N = analyze(st.data.normal, thr), F = analyze(st.data.focus, thr);
+    const nAvg = N.valid.length >= 3 ? Math.round(N.avg) : null, fAvg = F.valid.length >= 3 ? Math.round(F.avg) : null;
+    const r = {
+      source: this.src(), normal: nAvg, focus: fAvg, diff: nAvg != null && fAvg != null ? fAvg - nAvg : null,
+      rmssdN: N.rmssd != null ? Math.round(N.rmssd) : null, rmssdF: F.rmssd != null ? Math.round(F.rmssd) : null,
+      questions: null, hits: null, lies: null, fooled: null
+    };
+    if (st.game && st.gsub === 'scored') {
+      const j = judgeGame(st.game, nAvg != null ? N.avg : 72, thr);
+      Object.assign(r, { questions: st.game.questions.length, hits: j.hits, lies: j.lies, fooled: j.fooled });
+    }
+    return r;
+  }
 
   startRun(p) {
     if (this.needConnect()) { this.onSensor(); return; }
@@ -1303,12 +1341,7 @@ class Component extends DCLogic {
     const g = st.game, gsub = st.gsub;
     let gq = {}, gC = bpmChart(analyze([], thr), gD, mode, false, base, `기준 ${Math.round(base)}`), gj = { rows: [] }, gsum = { hits: '—', total: '', text: '게임을 끝까지 진행하면 결과가 표시돼요.', hasReward: false, reward: '' };
     if (g) {
-      const res = g.questions.map((text, i) => {
-        const A = analyze(g.beats[i], thr), after = A.valid.filter(b => b.t >= 1);
-        return { text, A, has: after.length > 0, rise: after.length ? Math.max(...after.map(b => b.s)) - base : 0 };
-      });
-      const md = median(res.map(r => r.rise));
-      res.forEach(r => { r.p = r.has ? Math.round(Math.min(97, Math.max(3, 100 / (1 + Math.exp(-((r.rise - md) / 2.2 - 0.6)))))) : 0; r.lie = r.p >= 60; });
+      const { res, hits, lies, fooled } = judgeGame(g, base, thr);
       const maxRise = Math.max(12, ...res.map(r => r.rise));
       const i = g.i, qel = Math.max(0, Math.min(gD, (now - g.qStart) / 1000)), wDone = qel >= gD, ans = g.answers[i];
       const dl = typeof live.bpm === 'number' ? live.bpm - Math.round(base) : 0;
@@ -1327,9 +1360,6 @@ class Component extends DCLogic {
       const top = res.reduce((b, r, k) => (r.p > res[b].p ? k : b), 0);
       const revealing = gsub === 'reveal' || gsub === 'scored', scored = gsub === 'scored';
       const allMarked = g.truth.every(t => t != null);
-      const hits = res.filter((r, k) => g.truth[k] != null && r.lie === (g.truth[k] === 'lie')).length;
-      const lies = g.truth.filter(t => t === 'lie').length;
-      const fooled = res.filter((r, k) => g.truth[k] === 'lie' && !r.lie).length;
       const rewardTitle = lies === 0 ? '거짓말 없이 모두 진실이었네요' : fooled > 0 ? `탐지기를 ${fooled}번 속였어요!` : '탐지기가 거짓말을 모두 찾아냈어요';
       const rewardText = fooled > 0 ? '속이기 성공 보상으로 간식 2개를 받아 가세요.' : '참가 보상으로 간식 1개를 받아 가세요.';
       gj = {

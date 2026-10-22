@@ -554,7 +554,7 @@
   const nowAbs = () => performance.timeOrigin + performance.now();   // 모든 창(iframe 포함)에서 같은 기준의 시각(ms)
   const store = {
     get(k, d) { try { const v = localStorage.getItem('heartSensor.' + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
-    set(k, v) { try { localStorage.setItem('heartSensor.' + k, JSON.stringify(v)); } catch { /* 저장 불가 환경 */ } }
+    set(k, v) { try { localStorage.setItem('heartSensor.' + k, JSON.stringify(v)); return true; } catch { return false; /* 저장 불가 환경 */ } }
   };
   const COLOR = { green: 'oklch(0.66 0.15 155)', amber: 'oklch(0.75 0.15 70)', red: 'oklch(0.62 0.19 25)', gray: '#8A93A0' };
   const SHELL_NAME = 'heart-sensor-shell';
@@ -654,7 +654,7 @@
   class Hub {
     constructor() {
       this.supported = !!navigator.serial;
-      this.settings = Object.assign({ source: 'sensor', sensitivity: 3, ledAuto: true, led: 60 }, store.get('settings', {}));
+      this.settings = Object.assign({ source: 'sensor', sensitivity: 3, ledAuto: true, led: 60, station: 'A' }, store.get('settings', {}));
       if (!this.supported) this.settings.source = 'sim';
       this.listeners = new Set();
       this.port = null;
@@ -666,6 +666,11 @@
       this.waveBuf = new WaveBuffer();
       this.log = [];
       this.raw = [];             // 최근 원신호 줄 (문제 분석용 '원신호 저장')
+      // 참가자 설문: 지금 체험 중인 참가자와 제출된 응답 (이 컴퓨터의 브라우저에 저장돼요)
+      this.participant = store.get('participant', null);
+      this.surveys = store.get('surveys', []);
+      this.seq = store.get('seq', 0);
+      this.surveySaveFailed = false;
       this.resetStream();
       this.status = this.buildStatus();
       setInterval(() => this.tick(), 250);
@@ -949,6 +954,8 @@
         level, label, hint, tone, color: COLOR[{ good: 'green', warn: 'amber', bad: 'red', idle: 'gray' }[tone]],
         finger, pulse, bpm: pulse && med ? Math.round(60000 / med) : null, badge,
         settings: Object.assign({}, s),
+        participant: this.participant ? Object.assign({}, this.participant) : null,
+        survey: { count: this.surveys.length, saveFailed: this.surveySaveFailed },
         diag: {
           ir: this.proc.lastIr, red: this.proc.lastRed, paIr: fw.paIr, paRed: fw.paRed, refl: fw.refl, auto: fw.auto,
           pi: sum.pi, periodicity: sum.periodicity, channel: sum.channel, fs: this.timing.fs, firmware: fw.version,
@@ -963,6 +970,8 @@
       else if (cmd === 'connect') this.connect();
       else if (cmd === 'disconnect') this.disconnect();
       else if (cmd === 'source') this.setSource(arg);
+      else if (cmd === 'participant') this.participantCmd(arg);
+      else if (cmd === 'survey') this.submitSurvey(arg);
     }
     setSource(src) {
       if (src === 'sensor' && !this.supported) return;
@@ -1011,6 +1020,85 @@
       const d = new Date();
       this.download('\uFEFF' + rows.map(r => r.join(',')).join('\r\n'), 'text/csv',
         `심박기록_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`);
+    }
+
+    // ── 참가자 설문 ──
+    // 실습을 시작하면 참가 번호를 붙여요. 부스 글자 + 순번(예: A-007)이라 노트북 여러 대의 CSV를 합쳐도 겹치지 않아요.
+    // 실습 결과 화면까지 마친 참가자(done)만 설문을 낼 수 있고, 번호 하나에 한 번만 받아요.
+    newParticipant() {
+      this.seq = Math.max(this.seq | 0, store.get('seq', 0) | 0) + 1;
+      store.set('seq', this.seq);
+      const station = this.settings.station || 'A';
+      return { id: `${station}-${String(this.seq).padStart(3, '0')}`, station, startedAt: Date.now(), done: false, surveyed: false, manual: false, results: null };
+    }
+    // arg: { begin: true } 실습 시작 · { results } 결과 화면 도착 · { manual: true } 운영자가 측정 없이 설문을 열어 줌
+    participantCmd(arg) {
+      if (!arg || typeof arg !== 'object') return;
+      let p = this.participant;
+      if (arg.begin) {
+        if (p && !p.done && !p.surveyed) return;   // 같은 참가자가 단계를 다시 하는 중
+        p = this.newParticipant();
+      } else if (arg.results || arg.manual) {
+        if (!p || p.surveyed) p = this.newParticipant();
+        const results = arg.results && typeof arg.results === 'object' ? arg.results : p.results;
+        p = Object.assign({}, p, { done: true, results: results || null, manual: !results });
+      } else return;
+      this.participant = p;
+      store.set('participant', p);
+      this.update();
+    }
+    // answers: [{ key, label, value }] — 질문 목록은 설문 화면(Heart Rate Survey.dc.html)에 있어요
+    submitSurvey(answers) {
+      const p = this.participant;
+      if (!p || !p.done || p.surveyed || !Array.isArray(answers)) return;
+      const clean = answers.filter(a => a && a.key).map(a => ({
+        key: String(a.key).slice(0, 40), label: String(a.label || a.key).slice(0, 80), value: a.value == null ? '' : String(a.value).slice(0, 500)
+      }));
+      this.surveys.push({ id: p.id, station: p.station, startedAt: p.startedAt, at: Date.now(), manual: !!p.manual, results: p.results, answers: clean });
+      this.surveySaveFailed = !store.set('surveys', this.surveys);
+      this.participant = Object.assign({}, p, { surveyed: true, surveyedAt: Date.now() });
+      store.set('participant', this.participant);
+      this.update();
+    }
+    setStation(letter) {
+      if (!/^[A-Z]$/.test(letter)) return;
+      this.settings.station = letter;
+      this.saveSettings();
+      this.update();
+    }
+    // 리허설 응답을 지우고 참가 번호도 001부터 다시 시작해요
+    clearSurveys() {
+      this.surveys = [];
+      this.surveySaveFailed = !store.set('surveys', this.surveys);
+      this.seq = 0;
+      store.set('seq', 0);
+      this.participant = null;
+      store.set('participant', null);
+      this.update();
+    }
+    exportSurveyCsv() {
+      const pad = v => String(v).padStart(2, '0');
+      const time = t => { if (!t) return ''; const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
+      // 쉼표·따옴표·줄바꿈이 있으면 따옴표로 감싸고, =·+·-·@로 시작하는 글은 엑셀이 수식으로 읽지 않게 앞에 '를 붙여요
+      const cell = v => {
+        v = v == null ? '' : String(v);
+        if (/^[=+\-@\t\r]/.test(v) && !/^-?\d+(\.\d+)?$/.test(v)) v = "'" + v;
+        return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      };
+      const cols = [], seen = new Set();
+      for (const r of this.surveys) for (const a of r.answers) if (!seen.has(a.key)) { seen.add(a.key); cols.push(a); }
+      const rows = [['참가번호', '부스', '실습 시작', '설문 제출', '측정', '보통 평균(BPM)', '집중 평균(BPM)', '변화량(BPM)', '보통 RMSSD(ms)', '집중 RMSSD(ms)',
+        '게임 질문 수', '탐지 적중', '실제 거짓말 수', '탐지기를 속인 수'].concat(cols.map(c => c.label))];
+      for (const r of this.surveys) {
+        const R = r.results || {}, A = {};
+        for (const a of r.answers) A[a.key] = a.value;
+        const src = r.manual ? '측정 없음' : R.source === 'sensor' ? '센서' : R.source === 'sim' ? '시뮬레이션' : '';
+        rows.push([r.id, r.station, time(r.startedAt), time(r.at), src, R.normal, R.focus, R.diff, R.rmssdN, R.rmssdF,
+          R.questions, R.hits, R.lies, R.fooled].concat(cols.map(c => A[c.key])));
+      }
+      const d = new Date();
+      this.download('\uFEFF' + rows.map(r => r.map(cell).join(',')).join('\r\n'), 'text/csv',
+        `설문응답_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.csv`);
     }
     openPanel() {
       if (!this.panel) this.panel = new Panel(this);
@@ -1105,6 +1193,15 @@
     <div class="hsp-note">자동으로 두면 손가락 두께·피부색·누르는 힘에 맞춰 0.2초마다 밝기를 맞춰요. IR 신호가 9만~22만 사이면 알맞은 밝기예요.</div>
   </div>
   <div class="hsp-card">
+    <div class="hsp-h">참가자 설문</div>
+    <div class="hsp-row"><div style="font-size:14px;font-weight:600" data-f="svCount"></div>
+      <div style="display:flex;gap:6px"><button class="hsp-btn ghost" data-a="sv-clear">지우기</button><button class="hsp-btn" data-a="sv-csv">CSV 저장</button></div></div>
+    <div class="hsp-hint" data-f="svNow"></div>
+    <div class="hsp-k" style="margin-top:14px">이 노트북의 부스 글자</div>
+    <div class="hsp-seg" data-f="station" style="margin-top:6px"><button data-a="st-A">A</button><button data-a="st-B">B</button><button data-a="st-C">C</button><button data-a="st-D">D</button><button data-a="st-E">E</button></div>
+    <div class="hsp-note">참가 번호 앞에 붙어요(예: A-007). 노트북마다 다른 글자를 고르면 CSV를 합쳐도 번호가 겹치지 않아요. 응답은 이 노트북의 브라우저에만 저장되니, 행사가 끝나면 꼭 CSV로 저장하세요.</div>
+  </div>
+  <div class="hsp-card">
     <div class="hsp-h">기록</div>
     <div class="hsp-row"><div style="font-size:14px;font-weight:600" data-f="logCount"></div>
       <div style="display:flex;gap:6px"><button class="hsp-btn ghost" data-a="clear">지우기</button><button class="hsp-btn" data-a="csv">CSV 저장</button></div></div>
@@ -1132,6 +1229,12 @@
         else if (act === 'csv') h.exportCsv();
         else if (act === 'raw') h.exportRaw();
         else if (act === 'clear') { h.log = []; h.update(); }
+        else if (act === 'sv-csv') h.exportSurveyCsv();
+        else if (act === 'sv-clear') {
+          if (!h.surveys.length) return;
+          if (window.confirm(`설문 응답 ${h.surveys.length}개를 모두 지우고 참가 번호를 001부터 다시 시작할까요?\nCSV로 먼저 저장했는지 꼭 확인해 주세요. 지운 응답은 되돌릴 수 없어요.`)) h.clearSurveys();
+        }
+        else if (act.startsWith('st-')) h.setStation(act.slice(3));
       });
       this.f.ledRange.addEventListener('input', e => this.hub.setLed(false, +e.target.value));
       this.onKey = e => { if (e.key === 'Escape') this.close(); };
@@ -1140,9 +1243,9 @@
       if (!this.el.isConnected) document.body.appendChild(this.el);
       requestAnimationFrame(() => this.el.classList.add('on'));
       document.addEventListener('keydown', this.onKey);
+      this.isOpen = true;
       this.render();
       const loop = () => { if (!this.isOpen) return; this.drawWave(); this.raf = requestAnimationFrame(loop); };
-      this.isOpen = true;
       loop();
     }
     close() {
@@ -1206,6 +1309,14 @@
       txt('ir', st.conn === 'ok' ? Math.round(d.ir).toLocaleString() : '—');
       txt('refl', d.refl != null && st.conn === 'ok' ? String(d.refl) : '—');
       txt('logCount', `박동 ${h.log.length.toLocaleString()}개 기록됨`);
+      // 설문
+      const p = h.participant, n = h.surveys.length;
+      const sat = h.surveys.map(r => +((r.answers.find(a => a.key === 'satisfaction') || {}).value)).filter(v => v >= 1 && v <= 5);
+      txt('svCount', `응답 ${n.toLocaleString()}명` + (sat.length ? ` · 만족도 평균 ${(sat.reduce((a, b) => a + b, 0) / sat.length).toFixed(1)}` : ''));
+      txt('svNow', (h.surveySaveFailed ? '⚠ 브라우저에 저장하지 못했어요. 지금 바로 CSV로 저장해 두세요. ' : '')
+        + (!p ? '아직 실습을 시작한 참가자가 없어요.'
+          : `현재 참가자 ${p.id} · ` + (p.surveyed ? '설문 완료' : p.done ? '실습 완료 · 설문 전' : '실습 중')));
+      [...f.station.children].forEach(b => b.classList.toggle('on', b.textContent === (s.station || 'A')));
       txt('foot', (d.firmware ? '펌웨어 ' + d.firmware + ' · ' : '') + (d.fs ? '샘플 속도 ' + d.fs.toFixed(1) + 'Hz' : '115200 baud'));
     }
   }
@@ -1264,6 +1375,12 @@
       this.wave = this.hub.waveBuf;
       this.hub.subscribe(ev => this.onMsg(ev));
       this.onMsg({ type: 'status', status: this.hub.status });
+      this.flushQueue();
+    }
+    flushQueue() {
+      const q = this.queued || [];
+      this.queued = [];
+      for (const [cmd, arg] of q) this.command(cmd, arg);
     }
     onMsg(d) {
       if (d.type === 'welcome') {
@@ -1271,6 +1388,7 @@
         this.mode = 'bridge';
         if (d.wave) this.wave.import(d.wave);
         d = { type: 'status', status: d.status };
+        setTimeout(() => this.flushQueue(), 0);
       } else if (d.type === 'wave') {
         if (this.mode === 'bridge') this.wave.push(d.t0, d.dt, d.v);
       }
@@ -1281,6 +1399,7 @@
     command(cmd, arg) {
       if (this.mode === 'local') this.hub.command(cmd, arg);
       else if (this.mode === 'bridge') window.parent.postMessage({ hs: 1, type: 'cmd', cmd, arg }, '*');
+      else (this.queued = this.queued || []).push([cmd, arg]);   // 바깥 창과 연결을 확인하는 중이면, 연결된 뒤에 보내요
     }
     openPanel() { this.command('panel'); }
     get source() { return this.status.source; }

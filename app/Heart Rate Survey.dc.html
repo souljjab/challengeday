@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./vendor/react.production.min.js"></script>
+<script src="./vendor/react-dom.production.min.js"></script>
+<script src="./dc-bundle.js"></script>
+<script src="./heart-sensor.js"></script>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="vendor/pretendard/pretendardvariable.css">
+  <style>
+    *{box-sizing:border-box}
+    html,body{margin:0;background:#F3F4F6}
+    body{font-family:"Pretendard Variable",Pretendard,-apple-system,BlinkMacSystemFont,system-ui,sans-serif;color:#0F1419;-webkit-font-smoothing:antialiased;letter-spacing:-0.005em}
+    a{color:#0F1419}
+    a:hover{color:oklch(0.62 0.19 25)}
+    button,input,textarea{font-family:inherit}
+  </style>
+</helmet>
+<div style="max-width:1480px;margin:0 auto;padding:20px 28px 40px;display:flex;flex-direction:column;gap:18px">
+
+  <header style="display:flex;align-items:center;justify-content:space-between;gap:14px 24px;flex-wrap:wrap">
+    <div style="display:flex;align-items:center;gap:12px">
+      <div style="width:38px;height:38px;border-radius:11px;background:#0F1419;display:flex;align-items:center;justify-content:center">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#FFFFFF" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"></path></svg>
+      </div>
+      <div>
+        <div style="font-size:18px;font-weight:700;letter-spacing:-0.02em">참가자 설문</div>
+        <div style="font-size:13px;color:#5B6573;margin-top:1px">심장 박동 기반 생체 신호 분석 · 화생컴공</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button onClick="{{ onSensor }}" title="센서 설정" style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:999px;background:#FFFFFF;border:1px solid #E6E8EC;font-size:12.5px;font-weight:600;color:#3A4350;cursor:pointer" style-hover="border-color:#B4BAC4;color:#0F1419">
+        <span style="width:6px;height:6px;border-radius:50%;background:{{ badge.dot }}"></span>{{ badge.text }}
+      </button>
+      <span style="font-size:12.5px;color:#8A93A0;font-weight:500">2026 챌린지데이</span>
+    </div>
+  </header>
+
+  <main style="width:100%;max-width:860px;margin:0 auto;display:flex;flex-direction:column;gap:14px">
+
+    <sc-if value="{{ v.loading }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:40px;text-align:center;font-size:15px;color:#5B6573">{{ loadingText }}</div>
+    </sc-if>
+
+    <sc-if value="{{ v.gate }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:40px 44px;display:flex;flex-direction:column;gap:22px">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em">참가자 전용</div>
+          <div style="font-size:30px;font-weight:700;letter-spacing:-0.03em;line-height:1.3;margin-top:8px;text-wrap:balance">체험을 마친 참가자만 설문에 참여할 수 있어요</div>
+          <div style="font-size:16px;color:#5B6573;line-height:1.6;margin-top:10px;text-wrap:pretty">심박 확인 → 보통·집중 상태 측정 → 거짓말 탐지기까지 실습을 끝내면, 결과 화면에서 바로 설문으로 넘어올 수 있어요.</div>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <a href="Heart%20Rate%20Practice.dc.html#start" style="display:inline-flex;align-items:center;height:52px;padding:0 26px;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;text-decoration:none" style-hover="background:#2A313C;color:#FFFFFF">실습하러 가기</a>
+          <a href="Heart%20Rate%20Monitor.dc.html" style="display:inline-flex;align-items:center;height:52px;padding:0 22px;border:1px solid #D5D9DF;border-radius:12px;background:#FFFFFF;color:#0F1419;font-size:15px;font-weight:600;text-decoration:none" style-hover="background:#F5F6F8;color:#0F1419">처음으로</a>
+        </div>
+        <div style="padding-top:16px;border-top:1px solid #EEF0F3;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div style="font-size:13px;color:#8A93A0;line-height:1.5">센서 문제로 측정을 못 했지만 체험은 마친 참가자라면</div>
+          <button onClick="{{ onManual }}" style="height:36px;padding:0 14px;border:1px solid #D5D9DF;border-radius:10px;background:#FFFFFF;color:#3A4350;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:#F5F6F8">운영자용 · 측정 없이 설문 열기</button>
+        </div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ v.form }}" hint-placeholder-val="{{ true }}">
+      <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:28px 32px;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:oklch(0.52 0.19 25);letter-spacing:0.02em">STEP 6 · 설문</div>
+            <div style="font-size:30px;font-weight:700;letter-spacing:-0.03em;margin-top:8px">체험 설문</div>
+            <div style="font-size:15px;color:#5B6573;line-height:1.55;margin-top:6px">1분이면 끝나요. 이름과 학번은 묻지 않아요.</div>
+          </div>
+          <div style="padding:10px 16px;border-radius:12px;background:#0F1419;color:#FFFFFF;text-align:right">
+            <div style="font-size:12px;font-weight:600;color:#B4BAC4">참가 번호</div>
+            <div style="font-size:24px;font-weight:700;letter-spacing:-0.01em;font-variant-numeric:tabular-nums;margin-top:2px">{{ pid }}</div>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:10px">
+          <sc-for list="{{ res }}" as="r" hint-placeholder-count="4">
+            <div style="padding:12px 16px;border-radius:12px;background:#F6F7F9">
+              <div style="font-size:12.5px;color:#5B6573;font-weight:600">{{ r.k }}</div>
+              <div style="font-size:19px;font-weight:700;letter-spacing:-0.02em;font-variant-numeric:tabular-nums;margin-top:4px;color:{{ r.color }}">{{ r.v }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <div style="font-size:13px;color:#5B6573;line-height:1.5">{{ resNote }}</div>
+      </div>
+
+      <sc-for list="{{ sections }}" as="sec" hint-placeholder-count="5">
+        <section id="{{ sec.anchor }}" style="background:#FFFFFF;border:1.5px solid {{ sec.border }};border-radius:16px;padding:24px 28px;display:flex;flex-direction:column;gap:16px">
+          <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap">
+            <span style="font-size:14px;font-weight:700;color:oklch(0.52 0.19 25);font-variant-numeric:tabular-nums">{{ sec.num }}</span>
+            <span style="font-size:19px;font-weight:700;letter-spacing:-0.02em;line-height:1.4;text-wrap:pretty">{{ sec.title }}</span>
+            <sc-if value="{{ sec.optional }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12px;font-weight:600;color:#5B6573;padding:3px 8px;border-radius:999px;background:#F1F2F4">선택</span>
+            </sc-if>
+            <sc-if value="{{ sec.missing }}" hint-placeholder-val="{{ false }}">
+              <span style="font-size:12.5px;font-weight:700;color:oklch(0.5 0.18 25)">아직 답하지 않았어요</span>
+            </sc-if>
+          </div>
+          <sc-if value="{{ sec.hasHelp }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:13.5px;color:#5B6573;margin-top:-8px">{{ sec.help }}</div>
+          </sc-if>
+          <sc-for list="{{ sec.items }}" as="it" hint-placeholder-count="1">
+            <div style="display:flex;flex-direction:column;gap:10px">
+              <sc-if value="{{ it.hasTitle }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:15px;font-weight:600;color:#0F1419;line-height:1.45">{{ it.title }}</div>
+              </sc-if>
+              <sc-if value="{{ it.isScale }}" hint-placeholder-val="{{ true }}">
+                <div>
+                  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px">
+                    <sc-for list="{{ it.scale }}" as="o" hint-placeholder-count="5">
+                      <button onClick="{{ o.on }}" aria-pressed="{{ o.sel }}" style="min-height:58px;padding:8px 4px;border-radius:12px;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.color }};cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px" style-active="transform:scale(0.97)">
+                        <span style="font-size:20px;font-weight:700;font-variant-numeric:tabular-nums;line-height:1">{{ o.n }}</span>
+                        <sc-if value="{{ o.hasLabel }}" hint-placeholder-val="{{ false }}">
+                          <span style="font-size:12.5px;font-weight:600;line-height:1.2">{{ o.label }}</span>
+                        </sc-if>
+                      </button>
+                    </sc-for>
+                  </div>
+                  <sc-if value="{{ it.hasEnds }}" hint-placeholder-val="{{ false }}">
+                    <div style="display:flex;justify-content:space-between;gap:12px;font-size:12.5px;color:#5B6573;font-weight:600;margin-top:6px"><span>{{ it.lo }}</span><span>{{ it.hi }}</span></div>
+                  </sc-if>
+                </div>
+              </sc-if>
+              <sc-if value="{{ it.isChoice }}" hint-placeholder-val="{{ false }}">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,{{ it.minW }}),1fr));gap:8px">
+                  <sc-for list="{{ it.opts }}" as="o" hint-placeholder-count="4">
+                    <button onClick="{{ o.on }}" aria-pressed="{{ o.sel }}" style="min-height:52px;padding:10px 14px;border-radius:12px;border:1px solid {{ o.border }};background:{{ o.bg }};color:{{ o.color }};cursor:pointer;display:flex;align-items:center;gap:10px;text-align:left;font-size:15px;font-weight:600;line-height:1.35" style-active="transform:scale(0.98)">
+                      <span style="width:20px;height:20px;flex:none;border-radius:{{ o.radius }};border:2px solid {{ o.markBorder }};background:{{ o.markBg }};color:#0F1419;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">{{ o.mark }}</span>{{ o.label }}
+                    </button>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ it.isText }}" hint-placeholder-val="{{ false }}">
+                <div>
+                  <textarea value="{{ it.text }}" onChange="{{ it.onText }}" placeholder="{{ it.placeholder }}" rows="3" style="width:100%;padding:12px 14px;border:1px solid #D5D9DF;border-radius:12px;font-size:15px;line-height:1.5;color:#0F1419;background:#FFFFFF;outline:none;resize:vertical" style-focus="border-color:#0F1419"></textarea>
+                  <div style="text-align:right;font-size:12px;color:#8A93A0;margin-top:4px;font-variant-numeric:tabular-nums">{{ it.count }}</div>
+                </div>
+              </sc-if>
+            </div>
+          </sc-for>
+        </section>
+      </sc-for>
+
+      <div style="position:sticky;bottom:12px;background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px 20px;flex-wrap:wrap;box-shadow:0 8px 24px rgba(15,20,25,0.08)">
+        <div style="min-width:0;flex:1 1 260px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="flex:1;height:6px;border-radius:3px;background:#EEF0F3;overflow:hidden"><div style="height:100%;width:{{ prog.w }};background:{{ prog.c }};border-radius:3px"></div></div>
+            <span style="font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums;color:#0F1419">{{ prog.text }}</span>
+          </div>
+          <div style="font-size:12.5px;color:{{ prog.noteColor }};margin-top:6px;line-height:1.5">{{ prog.note }}</div>
+        </div>
+        <button onClick="{{ onSubmit }}" style="height:54px;padding:0 32px;border:none;border-radius:12px;background:{{ submit.bg }};color:#FFFFFF;font-size:16.5px;font-weight:700;cursor:pointer" style-hover="filter:brightness(1.25)">{{ submit.label }}</button>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ v.thanks }}" hint-placeholder-val="{{ false }}">
+      <div style="background:#FFFFFF;border:1px solid #E6E8EC;border-radius:16px;padding:48px 44px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:18px">
+        <div style="width:72px;height:72px;border-radius:50%;background:oklch(0.95 0.05 155);display:flex;align-items:center;justify-content:center">
+          <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="oklch(0.47 0.13 155)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+        </div>
+        <div>
+          <div style="font-size:30px;font-weight:700;letter-spacing:-0.03em;text-wrap:balance">설문에 참여해 줘서 고마워요!</div>
+          <div style="font-size:16px;color:#5B6573;line-height:1.6;margin-top:10px;text-wrap:pretty">{{ thanks.text }}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:14px;padding:14px 22px;border-radius:14px;background:#0F1419;color:#FFFFFF">
+          <div style="font-size:13px;font-weight:600;color:#B4BAC4">참가 번호</div>
+          <div style="font-size:28px;font-weight:700;font-variant-numeric:tabular-nums">{{ pid }}</div>
+        </div>
+        <div style="font-size:17px;font-weight:700;color:oklch(0.47 0.13 155)">{{ thanks.reward }}</div>
+        <a href="Heart%20Rate%20Monitor.dc.html" style="display:inline-flex;align-items:center;height:52px;padding:0 26px;margin-top:8px;border-radius:12px;background:#0F1419;color:#FFFFFF;font-size:16px;font-weight:700;text-decoration:none" style-hover="background:#2A313C;color:#FFFFFF">다음 참가자 시작</a>
+      </div>
+    </sc-if>
+
+    <div style="font-size:12.5px;color:#8A93A0;text-align:center;line-height:1.6">응답은 참가 번호·측정 결과와 함께 이 노트북에만 저장되고, 부스 탐구 자료로만 사용해요.</div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+const RED = 'oklch(0.62 0.19 25)';
+
+// ───────── 설문 질문 ─────────
+// 문구를 고치거나 질문을 더하고 빼도 돼요. key는 CSV에서 열을 구분하는 이름이라 서로 달라야 하고,
+// label은 CSV 맨 윗줄(열 제목)에 들어가요. optional: true인 질문은 답하지 않아도 제출할 수 있어요.
+//   type: 'scale' 1~5점 (labels: 점수마다 글자, ends: 양 끝 설명) · 'choice' 하나 고르기 · 'multi' 여러 개 고르기 · 'text' 직접 쓰기
+const SECTIONS = [
+  { title: '오늘 체험은 어땠나요?', items: [
+    { key: 'satisfaction', label: '만족도(1~5)', type: 'scale', labels: ['별로예요', '아쉬워요', '보통이에요', '좋았어요', '최고예요'] }
+  ] },
+  { title: '가장 재미있었던 활동은 무엇인가요?', items: [
+    { key: 'favorite', label: '가장 재미있던 활동', type: 'choice', options: ['실시간 심박 그래프 보기', '보통·집중 상태 심박 비교', '거짓말 탐지기 게임', '심장·센서 원리 설명 듣기'] }
+  ] },
+  { title: '체험 후 얼마나 이해했나요?', help: '1 = 잘 모르겠어요 · 5 = 친구에게 설명할 수 있어요', items: [
+    { key: 'u_heart', label: '이해도-심장 박동 원리(1~5)', title: '심장이 스스로 뛰는 원리 (동방결절, 이온의 이동)', type: 'scale', ends: ['잘 모르겠어요', '설명할 수 있어요'] },
+    { key: 'u_ppg', label: '이해도-심박 센서 원리(1~5)', title: '빛으로 맥박을 재는 원리 (광혈류측정, PPG)', type: 'scale', ends: ['잘 모르겠어요', '설명할 수 있어요'] },
+    { key: 'u_ans', label: '이해도-자율신경 조절(1~5)', title: '긴장하면 심박이 빨라지는 이유 (교감·부교감 신경)', type: 'scale', ends: ['잘 모르겠어요', '설명할 수 있어요'] }
+  ] },
+  { title: '뺄셈 문제를 풀 때(집중 상태) 얼마나 긴장됐나요?', items: [
+    { key: 'tension', label: '집중 상태 긴장도(1~5)', type: 'scale', ends: ['전혀 긴장 안 됐어요', '아주 많이 긴장됐어요'] }
+  ] },
+  { title: '거짓말 탐지기 게임에서 거짓말할 때 떨렸나요?', items: [
+    { key: 'lie_nerve', label: '거짓말할 때 떨림', type: 'choice', options: ['많이 떨렸어요', '조금 떨렸어요', '전혀 안 떨렸어요', '거짓말을 안 했어요'] }
+  ] },
+  { title: '측정 결과가 내 실제 느낌과 비슷했나요?', items: [
+    { key: 'match', label: '결과와 느낌 일치', type: 'choice', options: ['아주 비슷했어요', '대체로 비슷했어요', '잘 모르겠어요', '달랐어요'] }
+  ] },
+  { title: '이 체험으로 더 알아보고 싶어진 분야가 있나요?', help: '여러 개 골라도 돼요', items: [
+    { key: 'interest', label: '더 알고 싶은 분야', type: 'multi', options: ['화학', '생명과학', '컴퓨터공학', '의료·헬스케어 기기', '없어요'], none: '없어요' }
+  ] },
+  { title: '나는…', items: [
+    { key: 'who', label: '참가자 구분', type: 'choice', options: ['1학년', '2학년', '3학년', '선생님', '기타'], optional: true }
+  ] },
+  { title: '부스에 하고 싶은 말이 있다면 적어 주세요', items: [
+    { key: 'comment', label: '하고 싶은 말', type: 'text', max: 200, optional: true, placeholder: '예) 거짓말 탐지기가 제 거짓말을 찾아내서 신기했어요!' }
+  ] }
+];
+const ITEMS = SECTIONS.flatMap(s => s.items);
+const THANKS_MINUTES = 10;   // 설문을 낸 지 이만큼 지나면 감사 화면 대신 '참가자 전용' 안내를 보여줘요
+
+const answered = (it, v) => it.type === 'multi' ? Array.isArray(v) && v.length > 0 : it.type === 'text' ? !!(v && v.trim()) : v != null;
+const signed = d => (d > 0 ? '+' : d < 0 ? '−' : '±') + Math.abs(d);
+const pick = on => ({ bg: on ? '#0F1419' : '#FFFFFF', color: on ? '#FFFFFF' : '#0F1419', border: on ? '#0F1419' : '#D5D9DF' });
+
+class Component extends DCLogic {
+  hs = window.HeartSensor && window.HeartSensor.client ? window.HeartSensor.client() : null;
+  state = { hs: null, answers: {}, formFor: null, showMissing: false, sending: null, error: '' };
+
+  componentDidMount() {
+    if (this.hs) { this.offHs = this.hs.subscribe(this.onHs); this.onHs({ type: 'status', status: this.hs.status }); }
+  }
+  componentWillUnmount() {
+    if (this.offHs) this.offHs();
+    clearTimeout(this.sendTimer);
+  }
+
+  onHs = ev => {
+    if (ev.type !== 'status') return;
+    const st = ev.status, p = st.participant;
+    this.setState(s => {
+      const upd = { hs: st };
+      // 참가자가 바뀌면 앞사람이 고르던 답을 지워요
+      if (p && p.id !== s.formFor) Object.assign(upd, { formFor: p.id, answers: {}, showMissing: false, error: '' });
+      if (s.sending && p && p.id === s.sending && p.surveyed) { upd.sending = null; clearTimeout(this.sendTimer); }
+      return upd;
+    });
+  };
+  onSensor = () => { if (this.hs) this.hs.openPanel(); };
+
+  setAnswer(it, value) {
+    this.setState(s => {
+      const a = { ...s.answers };
+      if (it.type === 'multi') {
+        let cur = Array.isArray(a[it.key]) ? a[it.key].slice() : [];
+        if (cur.includes(value)) cur = cur.filter(x => x !== value);
+        else cur = value === it.none ? [value] : [...cur.filter(x => x !== it.none), value];
+        a[it.key] = cur;
+      } else if (it.type === 'text') {
+        a[it.key] = value.slice(0, it.max || 200);
+      } else {
+        a[it.key] = value;
+      }
+      return { answers: a, error: '' };
+    });
+  }
+
+  missing() { return ITEMS.filter(it => !it.optional && !answered(it, this.state.answers[it.key])); }
+
+  onSubmit = () => {
+    const p = this.state.hs && this.state.hs.participant;
+    if (!p || !p.done || p.surveyed || this.state.sending) return;
+    const miss = this.missing();
+    if (miss.length) {
+      this.setState({ showMissing: true });
+      const si = SECTIONS.findIndex(s => s.items.includes(miss[0])), el = document.getElementById('q' + (si + 1));
+      if (el && el.scrollIntoView) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    const A = this.state.answers;
+    const answers = ITEMS.map(it => {
+      const v = A[it.key];
+      return { key: it.key, label: it.label, value: v == null ? '' : Array.isArray(v) ? v.join(', ') : typeof v === 'string' ? v.trim() : String(v) };
+    });
+    this.hs.command('survey', answers);
+    this.setState({ sending: p.id, error: '' });
+    clearTimeout(this.sendTimer);
+    this.sendTimer = setTimeout(() => {
+      if (this.state.sending) this.setState({ sending: null, error: '저장되었는지 확인하지 못했어요. 한 번 더 눌러 주세요. 계속 안 되면 운영자에게 알려 주세요.' });
+    }, 4000);
+  };
+
+  onManual = () => {
+    if (!this.hs) return;
+    if (window.confirm('운영자 확인: 이 참가자가 체험을 마쳤나요?\n측정 결과 없이 설문을 열어요.')) this.hs.command('participant', { manual: true });
+  };
+
+  renderVals() {
+    const st = this.state, hs = st.hs, p = hs && hs.participant;
+    const ready = !!hs && hs.source !== 'pending' && hs.participant !== undefined;
+    const recent = p && p.surveyed && (!p.surveyedAt || Date.now() - p.surveyedAt < THANKS_MINUTES * 60000);
+    const view = !this.hs || !ready ? 'loading' : !p || !p.done || (p.surveyed && !recent) ? 'gate' : p.surveyed ? 'thanks' : 'form';
+    const R = (p && p.results) || {};
+
+    const res = [
+      { k: '보통 상태 평균', v: R.normal != null ? `${R.normal} BPM` : '—', color: '#0F1419' },
+      { k: '집중 상태 평균', v: R.focus != null ? `${R.focus} BPM` : '—', color: '#0F1419' },
+      { k: '변화량 (집중 − 보통)', v: R.diff != null ? `${signed(R.diff)} BPM` : '—', color: R.diff > 0 ? 'oklch(0.52 0.19 25)' : R.diff < 0 ? 'oklch(0.52 0.19 255)' : '#0F1419' },
+      { k: '거짓말 탐지기', v: R.questions ? `${R.hits} / ${R.questions} 적중` : '—', color: '#0F1419' }
+    ];
+    const resNote = p && p.manual ? '운영자 확인으로 측정 결과 없이 참여해요.'
+      : '내 측정 결과예요. 설문 응답과 함께 저장돼요.' + (R.source === 'sim' ? ' (시뮬레이션 데이터로 진행했어요)' : '');
+
+    const A = st.answers, miss = new Set(this.missing().map(it => it.key));
+    const sections = SECTIONS.map((s, si) => {
+      const missing = st.showMissing && s.items.some(it => miss.has(it.key));
+      return {
+        anchor: 'q' + (si + 1), num: String(si + 1).padStart(2, '0'), title: s.title,
+        optional: s.items.every(it => it.optional), missing, border: missing ? RED : '#E6E8EC',
+        hasHelp: !!s.help, help: s.help || '',
+        items: s.items.map(it => {
+          const v = A[it.key];
+          const base = { hasTitle: !!it.title, title: it.title || '', isScale: it.type === 'scale', isChoice: it.type === 'choice' || it.type === 'multi', isText: it.type === 'text' };
+          if (it.type === 'scale') {
+            return Object.assign(base, {
+              hasEnds: !!it.ends, lo: it.ends ? it.ends[0] : '', hi: it.ends ? it.ends[1] : '',
+              scale: [1, 2, 3, 4, 5].map(n => {
+                const c = pick(v === n);
+                return { n, sel: v === n, hasLabel: !!it.labels, label: it.labels ? it.labels[n - 1] : '', on: () => this.setAnswer(it, n), bg: c.bg, color: c.color, border: c.border };
+              })
+            });
+          }
+          if (it.type === 'text') {
+            const t = v || '';
+            return Object.assign(base, { text: t, placeholder: it.placeholder || '', count: `${t.length} / ${it.max || 200}`, onText: e => this.setAnswer(it, e.target.value) });
+          }
+          const multi = it.type === 'multi', longest = Math.max(...it.options.map(o => o.length));
+          return Object.assign(base, {
+            minW: longest > 9 ? '300px' : longest > 5 ? '190px' : '130px',   // 보기 글자가 길면 한 줄에 2개씩
+            opts: it.options.map(o => {
+              const on = multi ? Array.isArray(v) && v.includes(o) : v === o, c = pick(on);
+              return {
+                label: o, sel: on, on: () => this.setAnswer(it, o), bg: c.bg, color: c.color, border: c.border,
+                mark: on ? '✓' : '', radius: multi ? '6px' : '50%', markBorder: on ? '#FFFFFF' : '#B4BAC4', markBg: on ? '#FFFFFF' : 'transparent'
+              };
+            })
+          });
+        })
+      };
+    });
+
+    const req = ITEMS.filter(it => !it.optional), done = req.filter(it => answered(it, A[it.key])).length, left = req.length - done;
+    const prog = {
+      w: (done / req.length * 100).toFixed(1) + '%', c: left ? '#0F1419' : 'oklch(0.66 0.15 155)', text: `${done} / ${req.length}`,
+      note: st.error || (left ? `필수 질문 ${left}개가 남았어요` : '모두 답했어요. 제출해 주세요!'),
+      noteColor: st.error ? 'oklch(0.5 0.18 25)' : '#5B6573'
+    };
+    const submit = { label: st.sending ? '저장하는 중…' : '제출하기', bg: left || st.sending ? '#5B6573' : '#0F1419' };
+
+    const reward = !R.questions ? '운영자에게 이 화면을 보여 주고 간식을 받아 가세요.'
+      : R.fooled > 0 ? `탐지기를 ${R.fooled}번 속였으니 간식 2개를 받아 가세요!` : '참가 보상으로 간식 1개를 받아 가세요!';
+
+    return {
+      badge: hs && hs.badge ? hs.badge : { text: '센서 확인 중…', dot: '#8A93A0' }, onSensor: this.onSensor,
+      v: { loading: view === 'loading', gate: view === 'gate', form: view === 'form', thanks: view === 'thanks' },
+      loadingText: this.hs ? '참가자 정보를 확인하고 있어요…' : 'heart-sensor.js를 찾을 수 없어요. app 폴더를 통째로 복사했는지 확인해 주세요.',
+      pid: p ? p.id : '—', res, resNote, sections, prog, submit,
+      thanks: { text: '응답은 부스 탐구 자료로 소중히 쓸게요.', reward },
+      onSubmit: this.onSubmit, onManual: this.onManual
+    };
+  }
+}
+</script>
+</body>
+</html>
