@@ -671,6 +671,10 @@
       this.surveys = store.get('surveys', []);
       this.seq = store.get('seq', 0);
       this.surveySaveFailed = false;
+      // START를 두 번 열었거나 페이지를 따로 연 다른 창이 설문 데이터를 바꾸면 따라가요 (서로 덮어쓰지 않게)
+      window.addEventListener('storage', e => {
+        if (/^heartSensor\.(participant|surveys|seq)$/.test(e.key || '')) { this.syncStore(); this.update(); }
+      });
       this.resetStream();
       this.status = this.buildStatus();
       setInterval(() => this.tick(), 250);
@@ -1031,16 +1035,31 @@
       const station = this.settings.station || 'A';
       return { id: `${station}-${String(this.seq).padStart(3, '0')}`, station, startedAt: Date.now(), done: false, surveyed: false, manual: false, results: null };
     }
-    // arg: { begin: true } 실습 시작 · { results } 결과 화면 도착 · { manual: true } 운영자가 측정 없이 설문을 열어 줌
+    // 저장소에 있는 값이 기준이에요. 바꾸기 전에 다른 창이 바꾼 내용을 먼저 읽어 와요.
+    syncStore() {
+      const sp = store.get('participant', undefined);
+      if (sp !== undefined) this.participant = sp;
+      const ss = store.get('surveys', null);
+      if (Array.isArray(ss) && !this.surveySaveFailed) this.surveys = ss;   // 저장에 실패했던 응답은 메모리에 남겨 둬요
+      const sq = store.get('seq', null);
+      if (sq != null) this.seq = sq | 0;
+    }
+    // arg: { begin, fresh } 실습 시작(fresh: 새 참가자가 시작 버튼을 누름, 아니면 단계 버튼으로 돌아감)
+    //      { results } 결과 화면 도착 · { manual: true } 운영자가 측정 없이 설문을 열어 줌
     participantCmd(arg) {
       if (!arg || typeof arg !== 'object') return;
+      this.syncStore();
       let p = this.participant;
       if (arg.begin) {
-        if (p && !p.done && !p.surveyed) return;   // 같은 참가자가 단계를 다시 하는 중
-        p = this.newParticipant();
+        if (p && !p.surveyed && !arg.fresh) return;   // 같은 참가자가 단계를 다시 하는 중이에요 (결과까지 마쳤어도 그대로)
+        if (p && !p.done && !p.surveyed) p = Object.assign({}, p, { startedAt: Date.now(), results: null });  // 앞사람이 중간에 그만둔 번호는 이어서 써요
+        else p = this.newParticipant();
       } else if (arg.results || arg.manual) {
+        const R = arg.results && typeof arg.results === 'object' ? arg.results : null;
+        const measured = !!R && (R.normal != null || R.focus != null || R.questions != null);
+        if (!arg.manual && !measured) return;   // 아무것도 재지 않고 결과로 건너뛰었으면 설문을 열지 않아요 (운영자 버튼은 예외)
         if (!p || p.surveyed) p = this.newParticipant();
-        const results = arg.results && typeof arg.results === 'object' ? arg.results : p.results;
+        const results = measured ? R : p.results;
         p = Object.assign({}, p, { done: true, results: results || null, manual: !results });
       } else return;
       this.participant = p;
@@ -1049,8 +1068,15 @@
     }
     // answers: [{ key, label, value }] — 질문 목록은 설문 화면(Heart Rate Survey.dc.html)에 있어요
     submitSurvey(answers) {
+      this.syncStore();
       const p = this.participant;
-      if (!p || !p.done || p.surveyed || !Array.isArray(answers)) return;
+      if (!p || !p.done || p.surveyed || !Array.isArray(answers)) { this.update(); return; }
+      if (this.surveys.some(r => r.id === p.id && r.startedAt === p.startedAt)) {   // 다른 창에서 이미 냈어요
+        this.participant = Object.assign({}, p, { surveyed: true, surveyedAt: p.surveyedAt || Date.now() });
+        store.set('participant', this.participant);
+        this.update();
+        return;
+      }
       const clean = answers.filter(a => a && a.key).map(a => ({
         key: String(a.key).slice(0, 40), label: String(a.label || a.key).slice(0, 80), value: a.value == null ? '' : String(a.value).slice(0, 500)
       }));
@@ -1077,6 +1103,7 @@
       this.update();
     }
     exportSurveyCsv() {
+      this.syncStore();
       const pad = v => String(v).padStart(2, '0');
       const time = t => { if (!t) return ''; const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; };
       // 쉼표·따옴표·줄바꿈이 있으면 따옴표로 감싸고, =·+·-·@로 시작하는 글은 엑셀이 수식으로 읽지 않게 앞에 '를 붙여요
@@ -1231,8 +1258,11 @@
         else if (act === 'clear') { h.log = []; h.update(); }
         else if (act === 'sv-csv') h.exportSurveyCsv();
         else if (act === 'sv-clear') {
-          if (!h.surveys.length) return;
-          if (window.confirm(`설문 응답 ${h.surveys.length}개를 모두 지우고 참가 번호를 001부터 다시 시작할까요?\nCSV로 먼저 저장했는지 꼭 확인해 주세요. 지운 응답은 되돌릴 수 없어요.`)) h.clearSurveys();
+          h.syncStore();
+          const n = h.surveys.length;
+          if (!n && !h.seq && !h.participant) return;
+          if (window.confirm(n ? `설문 응답 ${n}개를 모두 지우고 참가 번호를 001부터 다시 시작할까요?\nCSV로 먼저 저장했는지 꼭 확인해 주세요. 지운 응답은 되돌릴 수 없어요.`
+            : '저장된 설문 응답은 없어요. 참가 번호를 001부터 다시 시작할까요?')) h.clearSurveys();
         }
         else if (act.startsWith('st-')) h.setStation(act.slice(3));
       });
@@ -1341,7 +1371,8 @@
       if (e.source !== iframe.contentWindow || !d || d.hs !== 1) return;
       if (d.type === 'hello') {
         post({ type: 'welcome', status: hub.status, wave: hub.waveBuf.export() });
-        if (d.page) { try { sessionStorage.setItem('heartSensor.page', d.page); } catch { /* 무시 */ } }
+        // '#start'(새 참가자 시작)는 빼고 기억해요. 새로고침했을 때 결과까지 마친 참가자가 새 번호로 바뀌지 않게요
+        if (d.page) { try { sessionStorage.setItem('heartSensor.page', d.page.replace(/#start$/, '')); } catch { /* 무시 */ } }
       } else if (d.type === 'cmd') {
         hub.command(d.cmd, d.arg);
       }

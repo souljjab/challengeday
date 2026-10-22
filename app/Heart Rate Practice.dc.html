@@ -1004,7 +1004,11 @@ class Component extends DCLogic {
   state = { ...freshFlow(), qText: DEFAULT_Q.slice(), now: performance.now(), live: { bpm: 72, rr: 833, trend: 0 }, lastBadAt: -1e9 };
 
   componentDidMount() {
-    if (window.location.hash === '#start') this.goStep('check');
+    if (window.location.hash === '#start') {
+      // 처음 한 번만 새 참가자로 시작해요. 뒤로 가기로 다시 열려도 새 번호가 붙지 않게 주소에서 지워요
+      try { history.replaceState(history.state, '', location.pathname + location.search); } catch { /* 무시 */ }
+      this.goStep('check', true);
+    }
     if (this.hs) { this.offHs = this.hs.subscribe(this.onHs); this.onHs({ type: 'status', status: this.hs.status }); }
     this.nextBeat();
     this.rafId = requestAnimationFrame(this.draw);
@@ -1194,7 +1198,7 @@ class Component extends DCLogic {
     if (s.gsub === 'q') { u.gsub = 'setup'; u.game = null; }
     return u;
   }
-  goStep = key => {
+  goStep = (key, fresh) => {
     this.setState(s => {
       const u = { ...this.leave(s), screen: key };
       if (key === 'check') u.check = { start: performance.now(), stable: 0, doneAt: 0 };
@@ -1202,8 +1206,8 @@ class Component extends DCLogic {
     });
     // 참가자 설문: 실습을 시작하면 참가 번호를 받고, 결과 화면에 오면 측정 결과를 넘겨서 설문을 열어요
     if (!this.hs) return;
-    if (key === 'check') this.hs.command('participant', { begin: true });
-    if (key === 'summary') this.hs.command('participant', { results: this.surveyResults({ ...this.state, ...this.leave(this.state) }) });
+    if (key === 'check') this.hs.command('participant', { begin: true, fresh: !!fresh });
+    if (key === 'summary') this.hs.command('participant', { results: this.surveyResults({ ...this.state, ...this.leave(this.state) }) });  // 잰 것이 없으면 허브가 무시해요
   };
   surveyResults(st) {
     const thr = this.props.anomalyThreshold ?? 45;
@@ -1417,7 +1421,7 @@ class Component extends DCLogic {
       legend: mode === 'trend' ? { hi: '빨라지는 구간', lo: '느려지는 구간' } : { hi: '평균보다 빠름', lo: '평균보다 느림' },
       rr: rrChart(N, F, st.dur.normal, st.dur.focus),
       onRestart: () => this.setState({ ...freshFlow(), now: performance.now() }),
-      onStart: () => (this.needConnect() ? this.onSensor() : this.goStep('check')),
+      onStart: () => (this.needConnect() ? this.onSensor() : this.goStep('check', true)),
       onCheckNext: () => this.goStep('normal'),
       onStartNormal: () => this.startRun('normal'), onStopNormal: () => this.stopRun('normal'),
       onGoFocus: () => this.goStep('focus'),

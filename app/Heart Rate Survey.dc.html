@@ -39,7 +39,7 @@
       <button onClick="{{ onSensor }}" title="센서 설정" style="display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 11px;border-radius:999px;background:#FFFFFF;border:1px solid #E6E8EC;font-size:12.5px;font-weight:600;color:#3A4350;cursor:pointer" style-hover="border-color:#B4BAC4;color:#0F1419">
         <span style="width:6px;height:6px;border-radius:50%;background:{{ badge.dot }}"></span>{{ badge.text }}
       </button>
-      <span style="font-size:12.5px;color:#8A93A0;font-weight:500">2026 챌린지데이</span>
+      <a href="Heart%20Rate%20Monitor.dc.html" style="display:inline-flex;align-items:center;height:34px;padding:0 14px;border:1px solid #D5D9DF;border-radius:10px;background:#FFFFFF;color:#0F1419;font-size:13.5px;font-weight:600;text-decoration:none" style-hover="background:#F5F6F8;color:#0F1419">처음으로</a>
     </div>
   </header>
 
@@ -361,8 +361,9 @@ class Component extends DCLogic {
     };
     const submit = { label: st.sending ? '저장하는 중…' : '제출하기', bg: left || st.sending ? '#5B6573' : '#0F1419' };
 
-    const reward = !R.questions ? '운영자에게 이 화면을 보여 주고 간식을 받아 가세요.'
-      : R.fooled > 0 ? `탐지기를 ${R.fooled}번 속였으니 간식 2개를 받아 가세요!` : '참가 보상으로 간식 1개를 받아 가세요!';
+    // 간식은 게임 보상(1인 1회) 그대로예요. 설문 보상이 따로 있는 것처럼 보이지 않게 써요
+    const reward = !R.questions ? '참가 보상 간식을 아직 못 받았다면 운영자에게 이 화면을 보여 주세요.'
+      : `게임 보상(간식 ${R.fooled > 0 ? 2 : 1}개)을 아직 못 받았다면 운영자에게 이 화면을 보여 주세요.`;
 
     return {
       badge: hs && hs.badge ? hs.badge : { text: '센서 확인 중…', dot: '#8A93A0' }, onSensor: this.onSensor,

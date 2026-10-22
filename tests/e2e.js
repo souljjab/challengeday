@@ -130,10 +130,25 @@ const check = (cond, msg) => { console.log((cond ? '  ✓ ' : '  ✗ ') + msg); 
   check((await hubVal(() => window.HeartSensor.getHub().participant || {})).id === 'A-001', '실습을 시작하면 참가 번호 A-001');
   await fr.getByRole('button', { name: /결과/ }).first().click();
   await page.waitForTimeout(500);
-  check((await hubVal(() => window.HeartSensor.getHub().participant || {})).done === true, '결과 화면에 오면 설문을 열 수 있는 상태가 돼요');
+  check((await hubVal(() => window.HeartSensor.getHub().participant || {})).done === false, '아무것도 재지 않고 결과로 건너뛰면 설문이 열리지 않아요');
+  const prac = page.frames().find(f => /Practice/.test(f.url()));
+  await prac.evaluate(() => window.__dcSetProps('Heart Rate Practice', { phaseSeconds: 10 }));
+  await fr.getByRole('button', { name: /보통 상태/ }).first().click();
+  await fr.getByRole('button', { name: /측정 시작/ }).first().click();
+  await page.waitForTimeout(11500);
+  await fr.getByRole('button', { name: /결과/ }).first().click();
+  await page.waitForTimeout(500);
+  const pd = await hubVal(() => window.HeartSensor.getHub().participant || {});
+  check(pd.id === 'A-001' && pd.done === true && Math.abs(pd.results.normal - 72) <= 3, `측정 후 결과 화면에 오면 설문이 열려요 (보통 평균 ${pd.results && pd.results.normal})`);
   await fr.getByText('설문 참여하기').click();
   await fr.getByText('체험 설문').waitFor({ timeout: 8000 });
   check(await fr.getByText('A-001').count() > 0, '설문 화면에 참가 번호');
+  await page.evaluate(() => history.back());      // 안쪽 화면만 뒤로 가요
+  await page.waitForTimeout(2500);
+  check((await hubVal(() => window.HeartSensor.getHub().participant || {})).id === 'A-001', '뒤로 가도 새 참가 번호가 생기지 않아요');
+  await page.evaluate(() => history.forward());
+  await fr.getByText('체험 설문').waitFor({ timeout: 8000 });
+  check(await fr.getByText('A-001').count() > 0, '뒤로 갔다 와도 같은 참가 번호로 설문을 이어서 해요');
   await fr.getByRole('button', { name: '제출하기' }).click();
   await page.waitForTimeout(400);
   check(await fr.getByText('아직 답하지 않았어요').count() >= 5, '답하지 않은 필수 질문을 표시해요');
@@ -159,7 +174,7 @@ const check = (cond, msg) => { console.log((cond ? '  ✓ ' : '  ✗ ') + msg); 
   await page.locator('.hsp [data-a="sv-csv"]').click();
   const sfile = await sdl;
   const scsv = fs.readFileSync(await sfile.path(), 'utf8').split('\r\n');
-  check(scsv.length === 2 && /^﻿참가번호,부스,/.test(scsv[0]) && /^A-001,A,.*,센서,.*,5,거짓말 탐지기 게임,4,5,3,4,조금 떨렸어요,대체로 비슷했어요,"생명과학, 컴퓨터공학",,$/.test(scsv[1]),
+  check(scsv.length === 2 && /^﻿참가번호,부스,/.test(scsv[0]) && /^A-001,A,[^,]+,[^,]+,센서,7\d,,,\d+,,,,,,5,거짓말 탐지기 게임,4,5,3,4,조금 떨렸어요,대체로 비슷했어요,"생명과학, 컴퓨터공학",,$/.test(scsv[1]),
     `설문 CSV ${sfile.suggestedFilename()}: ${scsv[1]}`);
   await page.keyboard.press('Escape');
   await page.evaluate(() => { document.getElementById('page').src = 'app/Heart%20Rate%20Practice.dc.html#start'; });
